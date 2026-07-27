@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="楽譜ビューア">
+<meta name="theme-color" content="#1F1C18">
+<title>楽譜ビューア</title>
+<style>
+:root{
+  /* ── 配色「墨茶」D-2（2026-07-27 その2）──
+     暗い会場で使うので全体を暗く、ベタ塗りをやめて枠線と文字で見せる方式 */
+  --ink:#EEE6DA;          /* 本文の文字 */
+  --sub:#A89A88;          /* 補助の小さい文字 */
+  --bg:#1F1C18;           /* 画面の地 */
+  --card:#2C2721;         /* カード・ダイアログの地 */
+  --field:#191612;        /* 入力欄の地（少し沈ませる） */
+  --line:#4C4339;         /* 区切り線・枠線 */
+
+  --accent:#D9A860;       /* 琥珀：文字 */
+  --accent-hi:#E4B76E;    /* 琥珀：主ボタンの文字 */
+  --accent-line:#7A6437;  /* 琥珀：枠線 */
+  --accent-line-hi:#8A6F3C;
+  --accent-fill:#332B1E;  /* 琥珀：主ボタンの地（ごく淡く） */
+  --accent-on:#4E3D22;    /* 選択中のボタンの地 */
+  --accent-on-ink:#F0CB8C;
+
+  --accent2:#8FCE8F;      /* 緑：演奏・保存 */
+  --accent2-line:#4A6B45;
+  --accent2-fill:#26331F;
+
+  --danger:#E8907E;       /* 赤：削除 */
+  --danger-line:#7A473F;
+  --danger-fill:#332320;
+
+  --fs:20px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--ink);
+  font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic","Noto Sans JP",sans-serif;
+  font-size:var(--fs);line-height:1.6;-webkit-text-size-adjust:100%;overscroll-behavior:none;}
+button,input,select{font-family:inherit;font-size:1em;}
+.hidden{display:none !important;}
+
+/* ============ 共通パーツ ============ */
+.screen{min-height:100%;}
+.pad{padding:16px 16px 140px;max-width:1000px;margin:0 auto;
+     padding-left:calc(16px + env(safe-area-inset-left));
+     padding-right:calc(16px + env(safe-area-inset-right));
+     padding-top:calc(16px + env(safe-area-inset-top));}
+.bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+     padding-bottom:14px;border-bottom:3px solid var(--line);margin-bottom:20px;}
+h1{font-size:1.4em;margin:0;flex:1 1 auto;}
+h2{font-size:1.1em;margin:24px 0 12px;color:var(--sub);}
+
+.btn{min-height:64px;padding:0 22px;border:3px solid var(--accent-line-hi);border-radius:14px;
+     cursor:pointer;font-weight:700;background:var(--accent-fill);color:var(--accent-hi);
+     display:inline-flex;align-items:center;justify-content:center;gap:8px;}
+.btn:active{filter:brightness(1.35);}
+.btn.ghost{background:transparent;color:var(--accent);border-color:var(--accent-line);}
+.btn.go{background:var(--accent2-fill);color:var(--accent2);border-color:var(--accent2-line);}
+.btn.del{background:var(--danger-fill);color:var(--danger);border-color:var(--danger-line);}
+.btn.sm{min-height:52px;padding:0 16px;font-size:.9em;}
+.btn.xs{min-height:48px;min-width:48px;padding:0 12px;font-size:.85em;}
+.btn.wide{width:100%;}
+.btn[disabled]{opacity:.45;pointer-events:none;}
+.btnrow{display:flex;gap:12px;flex-wrap:wrap;}
+
+.card{background:var(--card);border:2px solid var(--line);border-radius:16px;
+      padding:16px;margin-bottom:14px;}
+.empty{text-align:center;color:var(--sub);padding:44px 16px;font-size:.95em;line-height:1.9;}
+
+input[type=text],input[type=number]{width:100%;padding:14px;border:3px solid var(--line);
+  border-radius:12px;background:var(--field);color:var(--ink);}
+input:focus{outline:none;border-color:var(--accent);}
+
+/* 時間入力（分'秒） */
+.timerow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.timebox{display:flex;align-items:center;gap:6px;flex:0 0 auto;}
+.timefld{width:64px !important;text-align:center;font-weight:700;
+  font-variant-numeric:tabular-nums;}
+.timesep{font-weight:700;font-size:1.15em;line-height:1;}
+label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
+
+.seg{display:flex;gap:0;border:3px solid var(--accent-line);border-radius:14px;overflow:hidden;}
+.seg button{flex:1;min-height:62px;border:none;background:transparent;color:var(--sub);
+  font-weight:700;cursor:pointer;padding:0 8px;}
+.seg button + button{border-left:3px solid var(--accent-line);}
+.seg button[aria-pressed="true"]{background:var(--accent-on);color:var(--accent-on-ink);}
+
+/* ============ セットリスト一覧 ============ */
+.setrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.setname{flex:1 1 200px;font-weight:700;font-size:1.05em;word-break:break-word;}
+.sub{font-size:.78em;color:var(--sub);font-weight:400;}
+
+/* ============ 曲リスト ============ */
+.songrow{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.songno{min-width:46px;height:46px;border-radius:50%;background:var(--accent-fill);
+  color:var(--accent);border:2px solid var(--accent-line);
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85em;flex:0 0 auto;}
+.songname{flex:1 1 180px;font-weight:700;word-break:break-word;}
+.songmeta{font-size:.75em;color:var(--sub);font-weight:400;margin-top:2px;}
+.songbtns{display:flex;gap:8px;flex-wrap:wrap;}
+
+/* ============ かぶせる画面 ============ */
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:60;
+  display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;padding:20px;}
+.sheet{background:var(--card);border:2px solid var(--line);border-radius:20px;max-width:620px;width:100%;
+  padding:24px;margin:auto;}
+.sheet h3{margin:0 0 8px;font-size:1.25em;}
+
+/* 曲の設定ダイアログ：スクロールなしで全部見えるように詰める */
+.sheet.compact{padding:18px 20px;}
+.sheet.compact h3{margin:0 0 4px;font-size:1.1em;}
+.sheet.compact label{margin:12px 0 5px;font-size:.88em;}
+.sheet.compact input[type=text]{padding:9px 12px;border-width:2px;border-radius:10px;}
+.sheet.compact .seg{border-width:2px;border-radius:11px;}
+.sheet.compact .seg button{min-height:44px;font-size:.9em;}
+.sheet.compact .btn{min-height:44px;padding:0 16px;border-radius:11px;border-width:2px;}
+.sheet.compact .seg button + button{border-left-width:2px;}
+.sheet.compact .btn.xs{min-height:38px;min-width:38px;padding:0 10px;font-size:.8em;}
+.sheet.compact .btn.sm{min-height:40px;font-size:.85em;}
+.sheet.compact .btnrow{gap:8px;}
+.sheet.compact .sub{font-size:.75em;line-height:1.5;}
+
+/* 実測ボタン：文字が「⏱ 計る」↔「■ 0'12 止める」で伸び縮みするので幅を固定 */
+#sMeas{min-width:132px;}
+#sMeas.meas{background:var(--danger-fill);color:var(--danger);border-color:var(--danger-line);
+  font-variant-numeric:tabular-nums;}
+
+/* ============ 演奏画面 ============ */
+#screen-play{position:fixed;inset:0;background:#000;overflow:hidden;z-index:40;}
+#stage{position:absolute;inset:0;overflow:hidden;background:#ffffff;touch-action:none;}
+#stage.dark{background:#000;}
+#pagesWrap{position:absolute;left:0;top:0;will-change:transform;}
+#pagesWrap.inv{filter:invert(1);}
+#pagesWrap canvas{display:block;background:#fff;}
+#pagesWrap.vert{display:block;}
+#pagesWrap.horz{display:flex;flex-direction:row;align-items:flex-start;width:max-content;}
+/* 日本語の縦書き（右から左へ読む）用。1ページ目が右端に来る */
+#pagesWrap.horzrev{display:flex;flex-direction:row-reverse;align-items:flex-start;width:max-content;}
+#pagesWrap.vert canvas{margin:0 0 6px 0;}
+#pagesWrap.horz canvas{margin:0 6px 0 0;flex:0 0 auto;}
+#pagesWrap.horzrev canvas{margin:0 0 0 6px;flex:0 0 auto;}
+
+#progress{position:absolute;left:0;right:0;top:0;height:8px;background:rgba(128,128,128,.3);z-index:5;}
+#progressBar{height:100%;width:0;background:#5f9e6a;}
+
+#playHud{position:absolute;left:0;right:0;bottom:0;z-index:10;
+  background:rgba(10,10,10,.86);color:#fff;
+  padding:8px calc(10px + env(safe-area-inset-left)) calc(8px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-right));}
+#playHud .title{font-weight:700;font-size:.95em;margin-bottom:1px;word-break:break-word;}
+#playHud .info{font-size:.72em;color:#b7ad9e;margin-bottom:7px;}
+#playHud .row{display:flex;gap:7px;flex-wrap:wrap;}
+#playHud .btn{background:transparent;color:var(--accent);border:2px solid var(--accent-line);
+  min-height:46px;padding:0 14px;font-size:.85em;border-radius:11px;}
+#playHud .btn.ghost{background:transparent;color:#ddd4c6;border-color:#6a6157;}
+#playHud .btn.go{background:var(--accent2-fill);color:var(--accent2);border-color:var(--accent2-line);
+  flex:1 1 180px;min-height:56px;font-size:1em;}
+
+/* 操作バーを畳んだときに右下に出る小さなタブ（押しやすさ優先で54px以上） */
+#hudTab{position:absolute;z-index:10;cursor:pointer;font-weight:700;font-size:1.05em;
+  right:calc(10px + env(safe-area-inset-right));
+  bottom:calc(10px + env(safe-area-inset-bottom));
+  min-width:66px;min-height:54px;border-radius:14px;
+  background:rgba(10,10,10,.86);color:var(--accent);border:2px solid var(--accent-line);}
+#hudTab:active{filter:brightness(1.35);}
+
+#loading{position:absolute;inset:0;z-index:20;display:flex;align-items:center;
+  justify-content:center;background:rgba(0,0,0,.85);color:#fff;font-size:1.1em;text-align:center;padding:24px;}
+
+#toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%) translateY(160%);
+  background:#3A342C;color:var(--ink);border:2px solid var(--line);
+  padding:14px 26px;border-radius:999px;font-size:.9em;
+  z-index:90;transition:transform .25s ease;}
+#toast.show{transform:translateX(-50%) translateY(0);}
+</style>
+</head>
+<body>
+
+<!-- ══════════ 画面1: セットリスト一覧 ══════════ -->
+<section id="screen-home" class="screen">
+  <div class="pad">
+    <div class="bar">
+      <h1>楽譜ビューア</h1>
+      <button class="btn sm ghost" id="btnBackup">バックアップ</button>
+      <button class="btn sm ghost" id="btnHelp">使い方</button>
+    </div>
+    <button class="btn wide" id="btnNewSet">＋ 新しいセットリストを作る</button>
+    <h2 id="setCount">セットリスト</h2>
+    <div id="setlists"></div>
+  </div>
+</section>
+
+<!-- ══════════ 画面2: セットリスト編集 ══════════ -->
+<section id="screen-edit" class="screen hidden">
+  <div class="pad">
+    <div class="bar">
+      <button class="btn sm ghost" id="btnBackHome">← 一覧</button>
+      <h1 id="editTitle">セットリスト</h1>
+      <button class="btn sm go" id="btnPlayAll">▶ 最初から演奏</button>
+    </div>
+
+    <label for="setNameInput">セットリスト名</label>
+    <input type="text" id="setNameInput" placeholder="例：7月ライブ 1st">
+
+    <h2 id="songCount">曲</h2>
+    <div id="songs"></div>
+
+    <button class="btn wide ghost" id="btnAddPdf" style="margin-top:16px;">＋ 楽譜PDFを追加</button>
+    <input type="file" id="filePick" accept="application/pdf,.pdf" multiple class="hidden">
+
+    <div class="btnrow" style="margin-top:36px;">
+      <button class="btn del sm" id="btnDelSet">✕ このセットリストを削除</button>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════ 曲の設定 ══════════ -->
+<div id="songDlg" class="overlay hidden">
+  <div class="sheet compact">
+    <h3>曲の設定</h3>
+
+    <label for="sName">曲名</label>
+    <input type="text" id="sName">
+
+    <label>スクロールにかける時間</label>
+    <div class="timerow">
+      <div class="timebox">
+        <input type="text" id="sMin" class="timefld" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="分">
+        <span class="timesep">'</span>
+        <input type="text" id="sSec" class="timefld" inputmode="numeric" pattern="[0-9]*" maxlength="2" aria-label="秒">
+      </div>
+      <button class="btn xs ghost" data-sec="-30">−30秒</button>
+      <button class="btn xs ghost" data-sec="-5">−5秒</button>
+      <button class="btn xs ghost" data-sec="5">＋5秒</button>
+      <button class="btn xs ghost" data-sec="30">＋30秒</button>
+      <button class="btn xs" type="button" id="sMeas">⏱ 計る</button>
+      <span class="sub" id="sTimeHint"></span>
+    </div>
+
+    <label>スクロール方向　<span class="sub">（日本語の縦書きなど右から左に読む楽譜は「横 ← 左へ」）</span></label>
+    <div class="seg" id="segDir">
+      <button type="button" data-v="v">縦 ↓ 下へ</button>
+      <button type="button" data-v="h">横 → 右へ</button>
+      <button type="button" data-v="hl">横 ← 左へ</button>
+    </div>
+
+    <label>色の表示　<span class="sub">（黒地に白の楽譜を白地で見たいとき →「白黒を反転」）</span></label>
+    <div class="seg" id="segInv">
+      <button type="button" data-v="0">そのまま</button>
+      <button type="button" data-v="1">白黒を反転</button>
+    </div>
+
+    <div class="btnrow" style="margin-top:18px;">
+      <button class="btn go" id="sSave" style="flex:1 1 150px;">保存</button>
+      <button class="btn ghost" id="sCancel" style="flex:1 1 110px;">やめる</button>
+      <button class="btn del sm" id="sDelete" style="flex:1 1 100%;">✕ この曲をセットリストから外す</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 使い方 ══════════ -->
+<div id="helpDlg" class="overlay hidden">
+  <div class="sheet">
+    <h3>使い方</h3>
+    <ol style="padding-left:1.2em;line-height:2;">
+      <li>「新しいセットリスト」を作る</li>
+      <li>「楽譜PDFを追加」で曲を並べる</li>
+      <li>曲をタップして、スクロール時間・方向・色を決める</li>
+      <li>「▶ 最初から演奏」</li>
+      <li>演奏画面で<b>画面中央をタップ</b>すると自動スクロール開始</li>
+      <li>スクロール中に<b>どこでもタップ</b>すると一時停止</li>
+      <li>1曲終わると次の曲が読み込まれ、待機状態になる</li>
+      <li>楽譜をもっと広く見たいときは「▽ 畳む」で操作バーを消せる（右下の「△」で戻る）</li>
+    </ol>
+    <div class="card" style="margin-top:20px;">
+      <b>本番前の注意</b><br>
+      <span class="sub">iPadの「設定 → 画面表示と明るさ → 自動ロック」を<b>「しない」</b>にしてください。演奏中に画面が消えるのを防げます。</span>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <b>データの保険</b><br>
+      <span class="sub">iPadは空き容量が減ると、しばらく使っていないアプリのデータを勝手に消すことがあります。一覧画面の<b>「バックアップ」</b>から書き出しておけば、消えても戻せます。<b>本番の前に一度</b>やっておくと安心です。</span>
+    </div>
+    <button class="btn wide" id="helpClose" style="margin-top:20px;">閉じる</button>
+  </div>
+</div>
+
+<!-- ══════════ バックアップ ══════════ -->
+<div id="bakDlg" class="overlay hidden">
+  <div class="sheet">
+    <h3>バックアップ</h3>
+    <p class="sub" style="line-height:1.9;margin:6px 0 20px;">
+      セットリストの設定と楽譜PDFを、まるごと1つのファイルに書き出します。<br>
+      iPadは空き容量が減ると、しばらく使っていないアプリのデータを勝手に消すことがあります。<br>
+      <b>本番の前に一度書き出しておくと安心です。</b>
+    </p>
+
+    <button class="btn wide" id="bakExport">⬇ 書き出す（ファイルを作る）</button>
+    <div class="sub" id="bakInfo" style="margin:10px 0 24px;"></div>
+
+    <button class="btn wide ghost" id="bakImport">⬆ 読み込む（ファイルから戻す）</button>
+    <input type="file" id="bakPick" accept="application/json,.json" class="hidden">
+
+    <button class="btn wide ghost" id="bakClose" style="margin-top:26px;">閉じる</button>
+  </div>
+</div>
+
+<div id="impDlg" class="overlay hidden">
+  <div class="sheet">
+    <h3>読み込みの確認</h3>
+    <div class="card" id="impInfo" style="line-height:1.9;margin-top:12px;"></div>
+    <button class="btn wide go" id="impAdd" style="margin-top:20px;">いまのデータに　追加する</button>
+    <button class="btn wide del" id="impReplace" style="margin-top:12px;">✕ いまのデータを消して　置きかえる</button>
+    <button class="btn wide ghost" id="impCancel" style="margin-top:26px;">やめる</button>
+  </div>
+</div>
+
+<!-- ══════════ 画面3: 演奏 ══════════ -->
+<section id="screen-play" class="screen hidden">
+  <div id="stage"><div id="pagesWrap"></div></div>
+  <div id="progress"><div id="progressBar"></div></div>
+
+  <div id="playHud">
+    <div class="title" id="hudTitle"></div>
+    <div class="info" id="hudInfo"></div>
+    <div class="row">
+      <button class="btn go" id="hudPlay">▶ 開始</button>
+      <button class="btn sm ghost" id="hudPrev">◀ 前の曲</button>
+      <button class="btn sm ghost" id="hudTop">⏮ 先頭へ</button>
+      <button class="btn sm ghost" id="hudNext">次の曲 ▶</button>
+      <button class="btn sm ghost" id="hudFold">▽ 畳む</button>
+      <button class="btn sm ghost" id="hudExit">✕ 終了</button>
+    </div>
+  </div>
+
+  <button id="hudTab" class="hidden" aria-label="操作バーを出す">△</button>
+
+  <div id="loading" class="hidden">読み込み中…</div>
+</section>
+
+<div id="toast"></div>
+
+<!-- pdf.worker を先に読むことで、file:// でもワーカー無しで動く保険になる -->
+<script src="lib/pdf.worker.min.js"></script>
+<script src="lib/pdf.min.js"></script>
+<script>
+(function () {
+"use strict";
+
+/* ═══════════════════════════════════════════
+   0. pdf.js の準備
+   ═══════════════════════════════════════════ */
+var pdfjsLib = window.pdfjsLib;
+if (pdfjsLib) {
+  try { pdfjsLib.GlobalWorkerOptions.workerSrc = "lib/pdf.worker.min.js"; } catch (e) {}
+}
+
+/* ═══════════════════════════════════════════
+   1. 保存まわり（IndexedDB = PDF本体 / localStorage = 設定）
+   ═══════════════════════════════════════════ */
+var DB_NAME = "gakufu-viewer", DB_VER = 1, STORE = "pdfs";
+var dbP = null;
+
+function openDB() {
+  if (dbP) return dbP;
+  dbP = new Promise(function (res, rej) {
+    var r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = function () {
+      var db = r.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" });
+    };
+    r.onsuccess = function () { res(r.result); };
+    r.onerror = function () { rej(r.error); };
+  });
+  return dbP;
+}
+function idbPut(rec) {
+  return openDB().then(function (db) {
+    return new Promise(function (res, rej) {
+      var tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).put(rec);
+      tx.oncomplete = function () { res(); };
+      tx.onerror = function () { rej(tx.error); };
+    });
+  });
+}
+function idbGet(id) {
+  return openDB().then(function (db) {
+    return new Promise(function (res, rej) {
+      var tx = db.transaction(STORE, "readonly");
+      var q = tx.objectStore(STORE).get(id);
+      q.onsuccess = function () { res(q.result || null); };
+      q.onerror = function () { rej(q.error); };
+    });
+  });
+}
+function idbDel(id) {
+  return openDB().then(function (db) {
+    return new Promise(function (res) {
+      var tx = db.transaction(STORE, "readwrite");
+      tx.objectStore(STORE).delete(id);
+      tx.oncomplete = function () { res(); };
+      tx.onerror = function () { res(); };
+    });
+  });
+}
+
+var LS_KEY = "gakufu-setlists-v1";
+var setlists = [];
+
+function loadState() {
+  try { setlists = JSON.parse(localStorage.getItem(LS_KEY)) || []; }
+  catch (e) { setlists = []; }
+  if (!Array.isArray(setlists)) setlists = [];
+}
+function saveState() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(setlists)); }
+  catch (e) { toast("設定の保存に失敗しました"); }
+}
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+
+/* ファイルを ArrayBuffer で読む（古いSafari用の保険つき） */
+function readFileBuf(file) {
+  if (file.arrayBuffer) return file.arrayBuffer();
+  return new Promise(function (res, rej) {
+    var fr = new FileReader();
+    fr.onload = function () { res(fr.result); };
+    fr.onerror = function () { rej(fr.error || new Error("読み込み失敗")); };
+    fr.readAsArrayBuffer(file);
+  });
+}
+
+/* ═══════════════════════════════════════════
+   2. 小道具
+   ═══════════════════════════════════════════ */
+var $ = function (id) { return document.getElementById(id); };
+var toastTimer;
+function toast(msg) {
+  var t = $("toast");
+  t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.classList.remove("show"); }, 2400);
+}
+function mmss(sec) {
+  sec = Math.max(0, Math.round(sec));
+  var m = Math.floor(sec / 60), s = sec % 60;
+  return m + "分" + (s < 10 ? "0" : "") + s + "秒";
+}
+/* スクロール方向の判定。dir は "v"（縦）/ "h"（横・右へ）/ "hl"（横・左へ＝縦書き用） */
+function isHorz(song) { return song && (song.dir === "h" || song.dir === "hl"); }
+function isRev(song)  { return song && song.dir === "hl"; }
+function dirLabel(dir, sh) {
+  if (dir === "h")  return sh ? "横 →" : "横スクロール →";
+  if (dir === "hl") return sh ? "横 ←" : "横スクロール ←";
+  return sh ? "縦 ↓" : "縦スクロール ↓";
+}
+function show(screenId) {
+  ["screen-home", "screen-edit", "screen-play"].forEach(function (id) {
+    $(id).classList.toggle("hidden", id !== screenId);
+  });
+}
+
+/* ═══════════════════════════════════════════
+   3. 画面1: セットリスト一覧
+   ═══════════════════════════════════════════ */
+function renderHome() {
+  var box = $("setlists");
+  box.innerHTML = "";
+  $("setCount").textContent = "セットリスト（" + setlists.length + "件）";
+
+  if (setlists.length === 0) {
+    var e = document.createElement("div");
+    e.className = "empty";
+    e.innerHTML = "まだセットリストがありません。<br>上のボタンから作ってください。";
+    box.appendChild(e);
+    return;
+  }
+
+  setlists.forEach(function (sl) {
+    var total = sl.songs.reduce(function (a, s) { return a + (s.seconds || 0); }, 0);
+    var card = document.createElement("div");
+    card.className = "card";
+    var row = document.createElement("div");
+    row.className = "setrow";
+
+    var nm = document.createElement("div");
+    nm.className = "setname";
+    nm.innerHTML = "";
+    nm.appendChild(document.createTextNode(sl.name || "（名前なし）"));
+    var sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent = sl.songs.length + "曲 / 合計 約" + mmss(total);
+    nm.appendChild(sub);
+
+    var bEdit = document.createElement("button");
+    bEdit.className = "btn sm ghost"; bEdit.textContent = "編集";
+    bEdit.onclick = function () { openEdit(sl.id); };
+
+    var bPlay = document.createElement("button");
+    bPlay.className = "btn sm go"; bPlay.textContent = "▶ 演奏";
+    bPlay.disabled = sl.songs.length === 0;
+    bPlay.onclick = function () { editId = sl.id; startPlay(sl.id, 0, "home"); };
+
+    row.appendChild(nm); row.appendChild(bEdit); row.appendChild(bPlay);
+    card.appendChild(row);
+    box.appendChild(card);
+  });
+}
+
+$("btnNewSet").onclick = function () {
+  var sl = { id: uid(), name: "新しいセットリスト", songs: [] };
+  setlists.unshift(sl); saveState(); openEdit(sl.id);
+};
+$("btnHelp").onclick = function () { $("helpDlg").classList.remove("hidden"); };
+$("helpClose").onclick = function () { $("helpDlg").classList.add("hidden"); };
+
+/* ═══════════════════════════════════════════
+   4. 画面2: セットリスト編集
+   ═══════════════════════════════════════════ */
+var editId = null;
+function curSet() {
+  for (var i = 0; i < setlists.length; i++) if (setlists[i].id === editId) return setlists[i];
+  return null;
+}
+function openEdit(id) {
+  editId = id;
+  var sl = curSet();
+  if (!sl) { show("screen-home"); return; }
+  $("setNameInput").value = sl.name;
+  $("editTitle").textContent = "編集";
+  renderSongs();
+  show("screen-edit");
+  window.scrollTo(0, 0);
+}
+function renderSongs() {
+  var sl = curSet(); if (!sl) return;
+  var box = $("songs"); box.innerHTML = "";
+  var total = sl.songs.reduce(function (a, s) { return a + (s.seconds || 0); }, 0);
+  $("songCount").textContent = "曲（" + sl.songs.length + "曲 / 合計 約" + mmss(total) + "）";
+  $("btnPlayAll").disabled = sl.songs.length === 0;
+
+  if (sl.songs.length === 0) {
+    var e = document.createElement("div");
+    e.className = "empty";
+    e.innerHTML = "まだ曲がありません。<br>下の「＋ 楽譜PDFを追加」から<br>PDFを選んでください。";
+    box.appendChild(e);
+    return;
+  }
+
+  sl.songs.forEach(function (song, idx) {
+    var card = document.createElement("div"); card.className = "card";
+    var row = document.createElement("div"); row.className = "songrow";
+
+    var no = document.createElement("div"); no.className = "songno"; no.textContent = (idx + 1);
+
+    var nm = document.createElement("div"); nm.className = "songname";
+    nm.appendChild(document.createTextNode(song.name));
+    var meta = document.createElement("div"); meta.className = "songmeta";
+    meta.textContent = mmss(song.seconds) + "　/　"
+      + dirLabel(song.dir, false)
+      + (song.invert ? "　/　反転" : "");
+    nm.appendChild(meta);
+
+    var btns = document.createElement("div"); btns.className = "songbtns";
+
+    var bUp = document.createElement("button");
+    bUp.className = "btn xs ghost"; bUp.textContent = "▲"; bUp.disabled = idx === 0;
+    bUp.onclick = function () { move(idx, -1); };
+
+    var bDn = document.createElement("button");
+    bDn.className = "btn xs ghost"; bDn.textContent = "▼"; bDn.disabled = idx === sl.songs.length - 1;
+    bDn.onclick = function () { move(idx, 1); };
+
+    var bSet = document.createElement("button");
+    bSet.className = "btn xs"; bSet.textContent = "設定";
+    bSet.onclick = function () { openSongDlg(idx); };
+
+    var bPl = document.createElement("button");
+    bPl.className = "btn xs go"; bPl.textContent = "▶";
+    bPl.onclick = function () { startPlay(sl.id, idx, "edit"); };
+
+    btns.appendChild(bUp); btns.appendChild(bDn); btns.appendChild(bSet); btns.appendChild(bPl);
+    row.appendChild(no); row.appendChild(nm); row.appendChild(btns);
+    card.appendChild(row); box.appendChild(card);
+  });
+}
+function move(idx, d) {
+  var sl = curSet(); var t = idx + d;
+  if (t < 0 || t >= sl.songs.length) return;
+  var tmp = sl.songs[idx]; sl.songs[idx] = sl.songs[t]; sl.songs[t] = tmp;
+  saveState(); renderSongs();
+}
+
+$("btnBackHome").onclick = function () { renderHome(); show("screen-home"); window.scrollTo(0, 0); };
+$("setNameInput").oninput = function () {
+  var sl = curSet(); if (!sl) return;
+  sl.name = this.value; saveState();
+};
+$("btnDelSet").onclick = function () {
+  var sl = curSet(); if (!sl) return;
+  if (!confirm("「" + sl.name + "」を削除しますか？\n（PDFのファイル自体は消えません）")) return;
+  sl.songs.forEach(function (s) { idbDel(s.pdfId); });
+  setlists = setlists.filter(function (x) { return x.id !== sl.id; });
+  saveState(); renderHome(); show("screen-home");
+  toast("削除しました");
+};
+$("btnPlayAll").onclick = function () { startPlay(editId, 0, "edit"); };
+
+$("btnAddPdf").onclick = function () { $("filePick").click(); };
+$("filePick").onchange = function () {
+  var files = Array.prototype.slice.call(this.files || []);
+  var self = this;
+  if (files.length === 0) return;
+  var sl = curSet(); if (!sl) return;
+
+  var chain = Promise.resolve();
+  files.forEach(function (f) {
+    chain = chain.then(function () {
+      return readFileBuf(f).then(function (buf) {
+        var pdfId = uid();
+        return idbPut({ id: pdfId, name: f.name, data: buf }).then(function () {
+          sl.songs.push({
+            id: uid(),
+            pdfId: pdfId,
+            name: f.name.replace(/\.pdf$/i, ""),
+            seconds: 180,
+            dir: "v",
+            invert: false
+          });
+        });
+      });
+    });
+  });
+  chain.then(function () {
+    saveState(); renderSongs();
+    toast(files.length + "曲を追加しました");
+  }).catch(function (err) {
+    toast("追加に失敗：" + err.message);
+  }).then(function () { self.value = ""; });
+};
+
+/* ═══════════════════════════════════════════
+   5. 曲の設定ダイアログ
+   ═══════════════════════════════════════════ */
+var dlgIdx = -1;
+function openSongDlg(idx) {
+  dlgIdx = idx;
+  measStop(false);            /* 計りかけを持ち込まない */
+  var s = curSet().songs[idx];
+  $("sName").value = s.name;
+  dlgSetSec(s.seconds);
+  segSet("segDir", s.dir);
+  segSet("segInv", s.invert ? "1" : "0");
+  updTimeHint();
+  $("songDlg").classList.remove("hidden");
+}
+function segSet(id, val) {
+  var bs = $(id).querySelectorAll("button");
+  for (var i = 0; i < bs.length; i++) bs[i].setAttribute("aria-pressed", bs[i].dataset.v === String(val));
+}
+function segGet(id) {
+  var bs = $(id).querySelectorAll("button");
+  for (var i = 0; i < bs.length; i++) if (bs[i].getAttribute("aria-pressed") === "true") return bs[i].dataset.v;
+  return bs[0].dataset.v;
+}
+["segDir", "segInv"].forEach(function (id) {
+  $(id).addEventListener("click", function (ev) {
+    var b = ev.target.closest("button"); if (!b) return;
+    segSet(id, b.dataset.v);
+  });
+});
+/* 入力欄（分'秒）↔ 秒数 の変換 */
+function dlgGetSec() {
+  var m = parseInt($("sMin").value, 10); if (isNaN(m) || m < 0) m = 0;
+  var s = parseInt($("sSec").value, 10); if (isNaN(s) || s < 0) s = 0;
+  return Math.min(3600, Math.max(1, m * 60 + s));
+}
+function dlgSetSec(sec) {
+  sec = Math.min(3600, Math.max(1, Math.round(sec) || 1));
+  var m = Math.floor(sec / 60), s = sec % 60;
+  $("sMin").value = String(m);
+  $("sSec").value = (s < 10 ? "0" : "") + s;
+  updTimeHint();
+}
+function updTimeHint() {
+  $("sTimeHint").textContent = "＝ " + mmss(dlgGetSec()) + " で端から端まで";
+}
+["sMin", "sSec"].forEach(function (id) {
+  var el = $(id);
+  /* 入力中は数字以外を弾くだけ。書き換えは指を離してから */
+  el.addEventListener("input", function () {
+    var v = this.value.replace(/[^0-9]/g, "").slice(0, 2);
+    if (v !== this.value) this.value = v;
+    updTimeHint();
+  });
+  el.addEventListener("focus", function () { this.select(); });
+  el.addEventListener("blur", function () { dlgSetSec(dlgGetSec()); });
+});
+document.querySelectorAll("[data-sec]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    dlgSetSec(dlgGetSec() + Number(this.dataset.sec));
+  });
+});
+$("sCancel").onclick = function () { measStop(false); $("songDlg").classList.add("hidden"); };
+$("sSave").onclick = function () {
+  measStop(false);
+  var s = curSet().songs[dlgIdx];
+  s.name = ($("sName").value || "").trim() || s.name;
+  s.seconds = dlgGetSec();
+  s.dir = segGet("segDir");
+  s.invert = segGet("segInv") === "1";
+  saveState(); renderSongs();
+  $("songDlg").classList.add("hidden");
+  toast("保存しました");
+};
+$("sDelete").onclick = function () {
+  var sl = curSet(); var s = sl.songs[dlgIdx];
+  if (!confirm("「" + s.name + "」をセットリストから外しますか？")) return;
+  idbDel(s.pdfId);
+  sl.songs.splice(dlgIdx, 1);
+  saveState(); renderSongs();
+  $("songDlg").classList.add("hidden");
+};
+
+/* ═══════════════════════════════════════════
+   5-2. バックアップ（書き出し／読み込み）
+   iPadは空き容量が減るとデータを勝手に消すことがあるので、その保険。
+   セットリストの設定と楽譜PDFの中身を、1つのJSONファイルにまとめる
+   ═══════════════════════════════════════════ */
+var BAK_APP = "gakufu-viewer", BAK_VER = 1;
+
+/* ArrayBuffer ⇔ 文字列（base64）。
+   一度に変換すると引数が多すぎて古いSafariが落ちるので、32KBずつ刻む */
+function bufToB64(buf) {
+  var b = new Uint8Array(buf), CH = 0x8000, parts = [];
+  for (var i = 0; i < b.length; i += CH) {
+    parts.push(String.fromCharCode.apply(null, b.subarray(i, i + CH)));
+  }
+  return btoa(parts.join(""));
+}
+function b64ToBuf(s) {
+  var bin = atob(s), n = bin.length, u = new Uint8Array(n);
+  for (var i = 0; i < n; i++) u[i] = bin.charCodeAt(i);
+  return u.buffer;
+}
+function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+function countSongs(list) {
+  return (list || []).reduce(function (a, sl) {
+    return a + ((sl && sl.songs && sl.songs.length) || 0);
+  }, 0);
+}
+function bakFileName(d) {
+  d = d || new Date();
+  return "楽譜ビューア_バックアップ_"
+    + d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + ".json";
+}
+function updBakInfo() {
+  $("bakInfo").textContent =
+    "いま入っているもの：セットリスト " + setlists.length + "件 / 曲 " + countSongs(setlists) + "曲";
+}
+
+$("btnBackup").onclick = function () { updBakInfo(); $("bakDlg").classList.remove("hidden"); };
+$("bakClose").onclick  = function () { $("bakDlg").classList.add("hidden"); };
+
+/* --- 書き出し --- */
+function buildBackup() {
+  var seen = {}, ids = [];
+  setlists.forEach(function (sl) {
+    (sl.songs || []).forEach(function (s) {
+      if (s.pdfId && !seen[s.pdfId]) { seen[s.pdfId] = 1; ids.push(s.pdfId); }
+    });
+  });
+  var pdfs = [], chain = Promise.resolve();
+  ids.forEach(function (id) {
+    chain = chain.then(function () {
+      return idbGet(id).then(function (rec) {
+        if (rec && rec.data) pdfs.push({ id: id, name: rec.name || "", b64: bufToB64(rec.data) });
+      });
+    });
+  });
+  return chain.then(function () {
+    return {
+      app: BAK_APP, version: BAK_VER,
+      exportedAt: new Date().toISOString(),
+      setlists: setlists, pdfs: pdfs
+    };
+  });
+}
+
+$("bakExport").onclick = function () {
+  if (setlists.length === 0) { toast("書き出すものがありません"); return; }
+  var btn = this;
+  btn.disabled = true;
+  toast("書き出しの準備中…");
+
+  buildBackup().then(function (data) {
+    var json = JSON.stringify(data);
+    var url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    var a = document.createElement("a");
+    a.href = url; a.download = bakFileName(); a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      try { URL.revokeObjectURL(url); } catch (e) {}
+    }, 8000);
+    toast("書き出しました（約" + Math.round(json.length / 1024) + " KB）");
+  }).catch(function (e) {
+    toast("書き出しに失敗：" + (e && e.message ? e.message : e));
+  }).then(function () { btn.disabled = false; });
+};
+
+/* --- 読み込み --- */
+var impData = null;
+
+function impDescribe(d) {
+  return "<b>このファイルの中身</b><br>"
+    + "セットリスト " + d.setlists.length + "件"
+    + "　/　曲 " + countSongs(d.setlists) + "曲"
+    + "　/　楽譜PDF " + ((d.pdfs && d.pdfs.length) || 0) + "個<br>"
+    + "<span class=\"sub\">書き出した日："
+    + (typeof d.exportedAt === "string" ? d.exportedAt.slice(0, 10) : "不明") + "</span>";
+}
+
+$("bakImport").onclick = function () { $("bakPick").click(); };
+$("bakPick").onchange = function () {
+  var f = this.files && this.files[0], self = this;
+  if (!f) return;
+  var fr = new FileReader();
+  fr.onload = function () {
+    try {
+      var d = JSON.parse(fr.result);
+      if (!d || !Array.isArray(d.setlists)) throw new Error("楽譜ビューアのバックアップではないようです");
+      impData = d;
+      $("impInfo").innerHTML = impDescribe(d);
+      $("bakDlg").classList.add("hidden");
+      $("impDlg").classList.remove("hidden");
+    } catch (e) {
+      toast("読み込めません：" + (e && e.message ? e.message : e));
+    }
+    self.value = "";
+  };
+  fr.onerror = function () { toast("ファイルが読めませんでした"); self.value = ""; };
+  fr.readAsText(f);
+};
+
+$("impCancel").onclick  = function () { impData = null; $("impDlg").classList.add("hidden"); };
+$("impAdd").onclick     = function () { applyImport(false); };
+$("impReplace").onclick = function () {
+  if (!confirm("いま入っているセットリストと楽譜をすべて消して、ファイルの中身に置きかえます。\nよろしいですか？")) return;
+  applyImport(true);
+};
+
+/* 読み込むときは id をすべて振り直す。
+   同じファイルを2回読んでも中身がぶつからないようにするため */
+function applyImport(replace) {
+  var d = impData;
+  if (!d) return Promise.resolve();
+
+  var pdfMap = {};
+  (d.pdfs || []).forEach(function (p) { if (p && p.id) pdfMap[p.id] = p; });
+
+  var step = Promise.resolve();
+  if (replace) {
+    step = step.then(function () {
+      var olds = [];
+      setlists.forEach(function (sl) {
+        (sl.songs || []).forEach(function (s) { if (s.pdfId) olds.push(s.pdfId); });
+      });
+      var c = Promise.resolve();
+      olds.forEach(function (id) { c = c.then(function () { return idbDel(id); }); });
+      return c.then(function () { setlists = []; });
+    });
+  }
+
+  var newSets = [];
+  step = step.then(function () {
+    var chain = Promise.resolve();
+    (d.setlists || []).forEach(function (sl) {
+      var nsl = { id: uid(), name: (sl && sl.name) || "読み込んだセットリスト", songs: [] };
+      newSets.push(nsl);
+      ((sl && sl.songs) || []).forEach(function (s) {
+        chain = chain.then(function () {
+          var p = pdfMap[s.pdfId];
+          var newPdfId = uid();
+          var put = (p && p.b64)
+            ? idbPut({ id: newPdfId, name: p.name || s.name || "", data: b64ToBuf(p.b64) })
+            : Promise.resolve();
+          return put.then(function () {
+            var sec = parseInt(s.seconds, 10);
+            if (isNaN(sec)) sec = 180;
+            nsl.songs.push({
+              id: uid(),
+              pdfId: newPdfId,
+              name: s.name || "曲",
+              seconds: Math.min(3600, Math.max(1, sec)),
+              dir: (s.dir === "h" || s.dir === "hl") ? s.dir : "v",
+              invert: !!s.invert
+            });
+          });
+        });
+      });
+    });
+    return chain;
+  });
+
+  return step.then(function () {
+    setlists = newSets.concat(setlists);
+    saveState();
+    impData = null;
+    $("impDlg").classList.add("hidden");
+    renderHome(); show("screen-home"); window.scrollTo(0, 0);
+    toast(newSets.length + "件のセットリストを読み込みました");
+  }).catch(function (e) {
+    toast("読み込みに失敗：" + (e && e.message ? e.message : e));
+  });
+}
+
+/* ═══════════════════════════════════════════
+   5-3. 曲の長さの実測（ストップウォッチ）
+   曲を流しながら「⏱ 計る」→「■ 止める」で、かかった時間を時間欄に入れる
+   ═══════════════════════════════════════════ */
+var measT0 = 0, measIv = 0;
+
+function measFmt(sec) { return Math.floor(sec / 60) + "'" + pad2(sec % 60); }
+
+function measStop(apply) {
+  if (!measIv) return;
+  clearInterval(measIv); measIv = 0;
+  var sec = Math.round((Date.now() - measT0) / 1000);
+  var b = $("sMeas");
+  b.classList.remove("meas");
+  b.textContent = "⏱ 計る";
+  if (apply && sec >= 1) {
+    dlgSetSec(sec);
+    toast("実測 " + mmss(sec) + " を入れました");
+  }
+}
+$("sMeas").onclick = function () {
+  if (measIv) { measStop(true); return; }
+  var b = this;
+  measT0 = Date.now();
+  b.classList.add("meas");
+  b.textContent = "■ " + measFmt(0) + " 止める";
+  measIv = setInterval(function () {
+    b.textContent = "■ " + measFmt(Math.floor((Date.now() - measT0) / 1000)) + " 止める";
+  }, 200);
+};
+
+/* ═══════════════════════════════════════════
+   6. 演奏エンジン
+   ═══════════════════════════════════════════ */
+var P = {
+  setId: null, idx: 0, songs: [], from: "home",
+  dist: 0, totalMs: 0, elapsedMs: 0, baseMs: 0, startTs: 0,
+  playing: false, raf: 0, renderToken: 0, ready: false,
+  finished: false, loadSec: "", folded: false
+};
+
+function startPlay(setId, idx, from) {
+  var sl = null;
+  for (var i = 0; i < setlists.length; i++) if (setlists[i].id === setId) sl = setlists[i];
+  if (!sl || sl.songs.length === 0) { toast("曲がありません"); return; }
+  P.setId = setId; P.songs = sl.songs; P.idx = idx; P.from = from || "home";
+  P.folded = false;
+  show("screen-play");
+  requestWakeLock();
+  loadSong(idx);
+}
+
+function exitPlay() {
+  stopScroll();
+  P.renderToken++;
+  releaseWakeLock();
+  $("pagesWrap").innerHTML = "";
+  if (P.from === "edit" && curSet()) { renderSongs(); show("screen-edit"); }
+  else { renderHome(); show("screen-home"); }
+  window.scrollTo(0, 0);
+}
+
+function stopScroll() {
+  P.playing = false;
+  if (P.raf) { cancelAnimationFrame(P.raf); P.raf = 0; }
+}
+
+/* --- 楽譜の描画 --- */
+function loadSong(idx) {
+  stopScroll();
+  P.idx = idx;
+  P.baseMs = 0; P.elapsedMs = 0;
+  P.ready = false;
+  var song = P.songs[idx];
+  if (!song) return;
+
+  var token = ++P.renderToken;
+  var t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+  var wrap = $("pagesWrap");
+  var stage = $("stage");
+
+  wrap.innerHTML = "";
+  wrap.style.transform = "translate3d(0,0,0)";
+  wrap.className = (isRev(song) ? "horzrev" : isHorz(song) ? "horz" : "vert") + (song.invert ? " inv" : "");
+  stage.classList.toggle("dark", !!song.invert);
+  stage.style.background = "";
+  $("progressBar").style.width = "0%";
+  P.finished = false;
+  setLoading("「" + song.name + "」を読み込み中…");
+  updHud();
+
+  if (!pdfjsLib) { setLoading("pdf.js が読み込めませんでした。lib フォルダを確認してください。"); return; }
+
+  idbGet(song.pdfId).then(function (rec) {
+    if (token !== P.renderToken) return;
+    if (!rec) throw new Error("PDFが見つかりません");
+    var bytes = new Uint8Array(rec.data.slice(0));
+    return pdfjsLib.getDocument({ data: bytes, disableAutoFetch: true }).promise;
+  }).then(function (pdf) {
+    if (!pdf || token !== P.renderToken) return;
+
+    var vw = stage.clientWidth, vh = stage.clientHeight;
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var horz = isHorz(song);
+
+    // ページ数が多いときは解像度を自動で落とす（古いiPadのメモリ切れ対策）
+    return pdf.getPage(1).then(function (p1) {
+      var b = p1.getViewport({ scale: 1 });
+      var cw = horz ? b.width * (vh / b.height) : vw;
+      var ch = horz ? vh : b.height * (vw / b.width);
+      var budget = 40e6;                       // 合計およそ40メガピクセルまで
+      var total = pdf.numPages * cw * ch * dpr * dpr;
+      if (total > budget) dpr = Math.max(1, dpr * Math.sqrt(budget / total));
+      return renderPages(pdf, dpr, horz, vw, vh, token, song);
+    });
+  }).then(function () {
+    if (token !== P.renderToken) return;
+    autoBackground();
+    measure();
+    P.ready = true;
+    clearLoading();
+    var t1 = (window.performance && performance.now) ? performance.now() : Date.now();
+    P.loadSec = ((t1 - t0) / 1000).toFixed(1);
+    updHud();
+  }).catch(function (err) {
+    if (token !== P.renderToken) return;
+    setLoading("読み込みエラー：" + (err && err.message ? err.message : err));
+  });
+}
+
+function renderPages(pdf, dpr, horz, vw, vh, token, song) {
+    var chain = Promise.resolve();
+
+    for (var pn = 1; pn <= pdf.numPages; pn++) {
+      (function (n) {
+        chain = chain.then(function () {
+          if (token !== P.renderToken) return;
+          setLoading("「" + song.name + "」を読み込み中… " + n + " / " + pdf.numPages + "ページ");
+          return pdf.getPage(n).then(function (page) {
+            var base = page.getViewport({ scale: 1 });
+            var cssW, cssH, scale;
+            if (horz) { cssH = vh; scale = (vh / base.height) * dpr; cssW = base.width * (vh / base.height); }
+            else      { cssW = vw; scale = (vw / base.width) * dpr;  cssH = base.height * (vw / base.width); }
+
+            // 巨大キャンバス対策（古いiPadのメモリを守る）
+            var maxDim = 4096;
+            var pxW = base.width * scale, pxH = base.height * scale;
+            if (pxW > maxDim || pxH > maxDim) {
+              var k = maxDim / Math.max(pxW, pxH);
+              scale *= k;
+            }
+
+            var vp = page.getViewport({ scale: scale });
+            var cv = document.createElement("canvas");
+            cv.width = Math.floor(vp.width); cv.height = Math.floor(vp.height);
+            cv.style.width = Math.floor(cssW) + "px";
+            cv.style.height = Math.floor(cssH) + "px";
+            var ctx = cv.getContext("2d", { alpha: false });
+            ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+            return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () {
+              if (token !== P.renderToken) return;
+              $("pagesWrap").appendChild(cv);
+            });
+          });
+        });
+      })(pn);
+    }
+    return chain;
+}
+
+/* 楽譜の地の色を読み取って、ページの隙間や余白をその色に合わせる。
+   （暗い背景の楽譜なのに隙間だけ白く光る、という事故を防ぐ） */
+function autoBackground() {
+  var cv = $("pagesWrap").querySelector("canvas");
+  if (!cv) return;
+  try {
+    var d = cv.getContext("2d").getImageData(2, 2, 1, 1).data;
+    var r = d[0], g = d[1], b = d[2];
+    var song = P.songs[P.idx];
+    if (song && song.invert) { r = 255 - r; g = 255 - g; b = 255 - b; }
+    $("stage").style.background = "rgb(" + r + "," + g + "," + b + ")";
+  } catch (e) {}
+}
+
+function measure() {
+  var song = P.songs[P.idx]; if (!song) return;
+  var stage = $("stage"), wrap = $("pagesWrap");
+  if (isHorz(song)) {
+    P.dist = Math.max(0, wrap.scrollWidth - stage.clientWidth);
+  } else {
+    P.dist = Math.max(0, wrap.scrollHeight - stage.clientHeight);
+  }
+  P.totalMs = song.seconds * 1000;
+  applyScroll(P.totalMs > 0 ? P.baseMs / P.totalMs : 0);
+}
+
+function applyScroll(p) {
+  p = Math.min(1, Math.max(0, p));
+  var song = P.songs[P.idx]; if (!song) return;
+  if (isRev(song)) {
+    /* 左へ流す：1ページ目が右端にあるので、右端から左へ寄せていく */
+    var offR = -Math.round(P.dist * (1 - p));
+    $("pagesWrap").style.transform = "translate3d(" + offR + "px, 0px, 0px)";
+  } else {
+    var off = -Math.round(P.dist * p);
+    $("pagesWrap").style.transform = isHorz(song)
+      ? "translate3d(" + off + "px, 0px, 0px)"
+      : "translate3d(0px, " + off + "px, 0px)";
+  }
+  $("progressBar").style.width = (p * 100) + "%";
+}
+
+/* --- 再生・停止 --- */
+function play() {
+  if (!P.ready || P.playing) return;
+  if (P.baseMs >= P.totalMs) P.baseMs = 0;
+  P.finished = false;
+  P.playing = true;
+  P.startTs = performance.now();
+  P.raf = requestAnimationFrame(tick);
+  updHud();
+}
+function pause() {
+  if (!P.playing) return;
+  stopScroll();
+  P.baseMs = P.elapsedMs;
+  updHud();
+}
+function tick() {
+  if (!P.playing) return;
+  P.elapsedMs = P.baseMs + (performance.now() - P.startTs);
+  var p = P.totalMs > 0 ? P.elapsedMs / P.totalMs : 1;
+  if (p >= 1) {
+    applyScroll(1);
+    stopScroll();
+    P.baseMs = P.totalMs; P.elapsedMs = P.totalMs;
+    songFinished();
+    return;
+  }
+  applyScroll(p);
+  updHud();
+  P.raf = requestAnimationFrame(tick);
+}
+function songFinished() {
+  if (P.idx < P.songs.length - 1) {
+    loadSong(P.idx + 1);   // 次の曲を読み込んで待機状態へ
+  } else {
+    P.finished = true;
+    updHud();
+  }
+}
+function goTo(idx) {
+  if (idx < 0 || idx >= P.songs.length) return;
+  loadSong(idx);
+}
+function toTop() {
+  stopScroll(); P.baseMs = 0; P.elapsedMs = 0; applyScroll(0);
+  updHud();
+  toast("先頭に戻しました");
+}
+
+/* --- 画面表示まわり --- */
+function setLoading(msg) { var l = $("loading"); l.textContent = msg; l.classList.remove("hidden"); }
+function clearLoading() { $("loading").classList.add("hidden"); }
+function updHud() {
+  var song = P.songs[P.idx];
+  var hud = $("playHud");
+  /* 再生中はバーもタブも消して完全な全画面。停止中は「畳む」かどうかで切り替える */
+  hud.classList.toggle("hidden", P.playing || P.folded);
+  $("hudTab").classList.toggle("hidden", P.playing || !P.folded);
+  if (!song) return;
+
+  $("hudTitle").textContent = (P.idx + 1) + ". " + song.name;
+  var remain = Math.max(0, (P.totalMs - (P.playing ? P.elapsedMs : P.baseMs)) / 1000);
+  $("hudInfo").textContent =
+    (P.idx + 1) + "曲目 / 全" + P.songs.length + "曲　　残り " + mmss(remain)
+    + "　　" + dirLabel(song.dir, true) + (song.invert ? "　反転" : "")
+    + (P.loadSec ? "　　読込 " + P.loadSec + "秒" : "");
+  $("hudPlay").textContent = (P.baseMs > 0 && P.baseMs < P.totalMs) ? "▶ 再開" : "▶ 開始";
+  $("hudPrev").disabled = P.idx === 0;
+  $("hudNext").disabled = P.idx >= P.songs.length - 1;
+}
+
+$("hudPlay").onclick = function (e) { e.stopPropagation(); play(); };
+$("hudPrev").onclick = function (e) { e.stopPropagation(); goTo(P.idx - 1); };
+$("hudNext").onclick = function (e) { e.stopPropagation(); goTo(P.idx + 1); };
+$("hudTop").onclick  = function (e) { e.stopPropagation(); toTop(); };
+$("hudExit").onclick = function (e) { e.stopPropagation(); exitPlay(); };
+$("hudFold").onclick = function (e) { e.stopPropagation(); P.folded = true;  updHud(); toast("右下の △ でバーが戻ります"); };
+$("hudTab").onclick  = function (e) { e.stopPropagation(); P.folded = false; updHud(); };
+
+/* --- タップ / ドラッグ --- */
+(function () {
+  var stage = $("stage");
+  var down = null, moved = false, startBase = 0;
+
+  stage.addEventListener("pointerdown", function (ev) {
+    down = { x: ev.clientX, y: ev.clientY };
+    moved = false;
+    startBase = P.baseMs;
+    try { if (!P.playing && stage.setPointerCapture) stage.setPointerCapture(ev.pointerId); } catch (e) {}
+  });
+
+  stage.addEventListener("pointermove", function (ev) {
+    if (!down) return;
+    var dx = ev.clientX - down.x, dy = ev.clientY - down.y;
+    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) moved = true;
+    if (P.playing || !P.ready || P.dist <= 0) return;
+    // 停止中は指で楽譜の位置を微調整できる
+    var song = P.songs[P.idx];
+    /* 左へ流すときは指の向きが逆になる */
+    var delta = isRev(song) ? dx : isHorz(song) ? -dx : -dy;
+    var newP = (P.dist * (P.baseMs / P.totalMs) + delta) / P.dist;
+    var clamped = Math.min(1, Math.max(0, newP));
+    P.baseMs = clamped * P.totalMs;
+    P.elapsedMs = P.baseMs;
+    applyScroll(clamped);
+    down = { x: ev.clientX, y: ev.clientY };
+  });
+
+  function up() {
+    if (!down) return;
+    var wasMoved = moved;
+    down = null; moved = false;
+    if (wasMoved) { updHud(); return; }
+    // 単純タップ
+    if (P.playing) pause();
+    else if (P.ready) play();
+  }
+  stage.addEventListener("pointerup", up);
+  stage.addEventListener("pointercancel", function () { down = null; moved = false; });
+})();
+
+/* --- 画面の回転・サイズ変更 --- */
+var resizeTimer;
+window.addEventListener("resize", function () {
+  if ($("screen-play").classList.contains("hidden")) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function () {
+    var wasPlaying = P.playing;
+    var ratio = P.totalMs > 0 ? (wasPlaying ? P.elapsedMs : P.baseMs) / P.totalMs : 0;
+    stopScroll();
+    var idx = P.idx;
+    loadSongThenRestore(idx, ratio, wasPlaying);
+  }, 350);
+});
+function loadSongThenRestore(idx, ratio, resume) {
+  var t = P.renderToken + 1;
+  loadSong(idx);
+  var iv = setInterval(function () {
+    if (P.ready && P.renderToken >= t) {
+      clearInterval(iv);
+      P.baseMs = ratio * P.totalMs;
+      P.elapsedMs = P.baseMs;
+      applyScroll(ratio);
+      if (resume) play(); else updHud();
+    }
+  }, 200);
+  setTimeout(function () { clearInterval(iv); }, 20000);
+}
+
+/* --- キーボード（Macでのテスト用） --- */
+document.addEventListener("keydown", function (ev) {
+  if ($("screen-play").classList.contains("hidden")) return;
+  if (ev.key === " ") { ev.preventDefault(); P.playing ? pause() : play(); }
+  else if (ev.key === "ArrowRight") goTo(P.idx + 1);
+  else if (ev.key === "ArrowLeft") goTo(P.idx - 1);
+  else if (ev.key === "Escape") exitPlay();
+  else if (ev.key === "Home") toTop();
+  else if (ev.key === "f" || ev.key === "F") { P.folded = !P.folded; updHud(); }
+});
+
+/* --- 画面を消させない（対応端末のみ） --- */
+var wakeLock = null;
+function requestWakeLock() {
+  try {
+    if (navigator.wakeLock && navigator.wakeLock.request) {
+      navigator.wakeLock.request("screen").then(function (w) { wakeLock = w; }).catch(function () {});
+    }
+  } catch (e) {}
+}
+function releaseWakeLock() {
+  try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
+}
+document.addEventListener("visibilitychange", function () {
+  if (document.visibilityState === "visible" && !$("screen-play").classList.contains("hidden")) requestWakeLock();
+});
+
+/* ═══════════════════════════════════════════
+   7. 起動
+   ═══════════════════════════════════════════ */
+loadState();
+renderHome();
+show("screen-home");
+
+// ホーム画面アプリ用（サーバーに置いたときだけ有効になる）
+if ("serviceWorker" in navigator && location.protocol.indexOf("http") === 0) {
+  navigator.serviceWorker.register("sw.js").catch(function () {});
+}
+
+window.addEventListener("error", function (e) {
+  toast("エラー: " + (e.message || "不明"));
+});
+
+})();
+</script>
+</body>
+</html>
