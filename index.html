@@ -982,7 +982,16 @@ function loadSong(idx) {
     if (token !== P.renderToken) return;
     if (!rec) throw new Error("PDFが見つかりません");
     var bytes = new Uint8Array(rec.data.slice(0));
-    return pdfjsLib.getDocument({ data: bytes, disableAutoFetch: true }).promise;
+    /* cMapUrl / cMapPacked は日本語PDFに必須。
+       日本語フォントを使ったPDFは「CMap」という文字コードの対応表を要求する。
+       これを渡さないとフォントの読み込みが失敗し、文字が1つも描かれなくなる
+       （図形やマーカーだけが残る）。2026-07-27 その7 に実際に踏んだ。消さないこと。 */
+    return pdfjsLib.getDocument({
+      data: bytes,
+      disableAutoFetch: true,
+      cMapUrl: "lib/cmaps/",
+      cMapPacked: true
+    }).promise;
   }).then(function (pdf) {
     if (!pdf || token !== P.renderToken) return;
 

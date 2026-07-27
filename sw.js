@@ -1,12 +1,29 @@
 /* オフライン用キャッシュ。サーバー(https)に置いたときだけ働きます。
    ファイルを更新したら、下の CACHE の数字を1つ増やしてください。 */
-var CACHE = "qlists-v2";
+var CACHE = "qlists-v3";
 var FILES = [
   "./",
   "./index.html",
   "./lib/pdf.min.js",
   "./lib/pdf.worker.min.js",
-  "./apple-touch-icon.png"
+  "./apple-touch-icon.png",
+  /* ↓ 日本語PDF用の文字コード対応表（CMap）。
+     これが無いと、日本語フォントのPDFで文字が1つも出ない。
+     2026-07-27 その7 に追加。減らさないこと。 */
+  "./lib/cmaps/90ms-RKSJ-H.bcmap",
+  "./lib/cmaps/90ms-RKSJ-V.bcmap",
+  "./lib/cmaps/90msp-RKSJ-H.bcmap",
+  "./lib/cmaps/90msp-RKSJ-V.bcmap",
+  "./lib/cmaps/90pv-RKSJ-H.bcmap",
+  "./lib/cmaps/Adobe-Japan1-UCS2.bcmap",
+  "./lib/cmaps/EUC-H.bcmap",
+  "./lib/cmaps/EUC-V.bcmap",
+  "./lib/cmaps/UniJIS-UCS2-H.bcmap",
+  "./lib/cmaps/UniJIS-UCS2-HW-H.bcmap",
+  "./lib/cmaps/UniJIS-UCS2-HW-V.bcmap",
+  "./lib/cmaps/UniJIS-UCS2-V.bcmap",
+  "./lib/cmaps/UniJIS-UTF16-H.bcmap",
+  "./lib/cmaps/UniJIS-UTF16-V.bcmap"
 ];
 
 /* ★ cache:"reload" が要。これが無いと、ブラウザが持っている
