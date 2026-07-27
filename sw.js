@@ -1,11 +1,12 @@
 /* オフライン用キャッシュ。サーバー(https)に置いたときだけ働きます。
    ファイルを更新したら、下の CACHE の数字を1つ増やしてください。 */
-var CACHE = "gakufu-v2";
+var CACHE = "qlists-v1";
 var FILES = [
   "./",
   "./index.html",
   "./lib/pdf.min.js",
-  "./lib/pdf.worker.min.js"
+  "./lib/pdf.worker.min.js",
+  "./apple-touch-icon.png"
 ];
 
 self.addEventListener("install", function (e) {
