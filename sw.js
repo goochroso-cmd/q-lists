@@ -1,6 +1,6 @@
 /* オフライン用キャッシュ。サーバー(https)に置いたときだけ働きます。
    ファイルを更新したら、下の CACHE の数字を1つ増やしてください。 */
-var CACHE = "qlists-v1";
+var CACHE = "qlists-v2";
 var FILES = [
   "./",
   "./index.html",
@@ -9,9 +9,20 @@ var FILES = [
   "./apple-touch-icon.png"
 ];
 
+/* ★ cache:"reload" が要。これが無いと、ブラウザが持っている
+   古い一時ファイルをそのまま保存してしまい、更新しても反映されない。
+   （2026-07-27 その5 に実際に踏んだ。消さないこと） */
 self.addEventListener("install", function (e) {
   self.skipWaiting();
-  e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(FILES); }));
+  e.waitUntil(
+    caches.open(CACHE).then(function (c) {
+      return Promise.all(FILES.map(function (u) {
+        return fetch(new Request(u, { cache: "reload" })).then(function (res) {
+          if (res && res.ok) return c.put(u, res);
+        }).catch(function () {});
+      }));
+    })
+  );
 });
 
 self.addEventListener("activate", function (e) {
