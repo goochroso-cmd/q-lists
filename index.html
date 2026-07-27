@@ -149,15 +149,13 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
 
 #playHud{position:absolute;left:0;right:0;bottom:0;z-index:10;
   background:rgba(10,10,10,.86);color:#fff;
-  padding:8px calc(10px + env(safe-area-inset-left)) calc(8px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-right));}
-#playHud .title{font-weight:700;font-size:.95em;margin-bottom:1px;word-break:break-word;}
-#playHud .info{font-size:.72em;color:#b7ad9e;margin-bottom:7px;}
-#playHud .row{display:flex;gap:7px;flex-wrap:wrap;}
+  padding:6px calc(10px + env(safe-area-inset-left)) calc(6px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-right));}
+#playHud .row{display:flex;gap:6px;flex-wrap:wrap;}
 #playHud .btn{background:transparent;color:var(--accent);border:2px solid var(--accent-line);
-  min-height:46px;padding:0 14px;font-size:.85em;border-radius:11px;}
+  min-height:38px;padding:0 11px;font-size:.78em;border-radius:9px;}
 #playHud .btn.ghost{background:transparent;color:#ddd4c6;border-color:#6a6157;}
 #playHud .btn.go{background:var(--accent2-fill);color:var(--accent2);border-color:var(--accent2-line);
-  flex:1 1 180px;min-height:56px;font-size:1em;}
+  flex:1 1 160px;min-height:44px;font-size:.9em;}
 
 /* 操作バーを畳んだときに右下に出る小さなタブ（押しやすさ優先で54px以上） */
 #hudTab{position:absolute;z-index:10;cursor:pointer;font-weight:700;font-size:1.05em;
@@ -322,8 +320,6 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
   <div id="progress"><div id="progressBar"></div></div>
 
   <div id="playHud">
-    <div class="title" id="hudTitle"></div>
-    <div class="info" id="hudInfo"></div>
     <div class="row">
       <button class="btn go" id="hudPlay">▶ 開始</button>
       <button class="btn sm ghost" id="hudPrev">◀ 前の曲</button>
@@ -1166,12 +1162,8 @@ function updHud() {
   $("hudTab").classList.toggle("hidden", P.playing || !P.folded);
   if (!song) return;
 
-  $("hudTitle").textContent = (P.idx + 1) + ". " + song.name;
-  var remain = Math.max(0, (P.totalMs - (P.playing ? P.elapsedMs : P.baseMs)) / 1000);
-  $("hudInfo").textContent =
-    (P.idx + 1) + "曲目 / 全" + P.songs.length + "曲　　残り " + mmss(remain)
-    + "　　" + dirLabel(song.dir, true) + (song.invert ? "　反転" : "")
-    + (P.loadSec ? "　　読込 " + P.loadSec + "秒" : "");
+  /* 曲名・曲数・残り時間・スクロール方向・読込秒数の表示は撤去した（2026-07-27 その8・親分の指示）。
+     復活させないこと。楽譜を広く見せるため、バーはボタンだけの1列にしてある */
   $("hudPlay").textContent = (P.baseMs > 0 && P.baseMs < P.totalMs) ? "▶ 再開" : "▶ 開始";
   $("hudPrev").disabled = P.idx === 0;
   $("hudNext").disabled = P.idx >= P.songs.length - 1;
@@ -1189,6 +1181,10 @@ $("hudTab").onclick  = function (e) { e.stopPropagation(); P.folded = false; upd
 (function () {
   var stage = $("stage");
   var down = null, moved = false, startBase = 0;
+  /* ダブルタップ判定（2026-07-27 その8）。1回タップでは何も起きない。
+     ステージ上で指が触れただけで再生が始まる事故を防ぐため。DBL_MS / DBL_PX は下の2つ */
+  var DBL_MS = 400, DBL_PX = 45;
+  var lastTapAt = 0, lastTapX = 0, lastTapY = 0;
 
   stage.addEventListener("pointerdown", function (ev) {
     down = { x: ev.clientX, y: ev.clientY };
@@ -1217,14 +1213,23 @@ $("hudTab").onclick  = function (e) { e.stopPropagation(); P.folded = false; upd
   function up() {
     if (!down) return;
     var wasMoved = moved;
+    var x = down.x, y = down.y;
     down = null; moved = false;
-    if (wasMoved) { updHud(); return; }
-    // 単純タップ
-    if (P.playing) pause();
-    else if (P.ready) play();
+    if (wasMoved) { lastTapAt = 0; updHud(); return; }
+
+    /* 単純タップ。2回続けて素早く同じあたりを叩いたときだけ再生／一時停止する */
+    var now = Date.now();
+    if (now - lastTapAt <= DBL_MS &&
+        Math.abs(x - lastTapX) <= DBL_PX && Math.abs(y - lastTapY) <= DBL_PX) {
+      lastTapAt = 0;                 // 3回目が続けて反応しないように消す
+      if (P.playing) pause();
+      else if (P.ready) play();
+      return;
+    }
+    lastTapAt = now; lastTapX = x; lastTapY = y;   // 1回目。何もしない
   }
   stage.addEventListener("pointerup", up);
-  stage.addEventListener("pointercancel", function () { down = null; moved = false; });
+  stage.addEventListener("pointercancel", function () { down = null; moved = false; lastTapAt = 0; });
 })();
 
 /* --- 画面の回転・サイズ変更 --- */

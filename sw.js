@@ -1,6 +1,6 @@
 /* オフライン用キャッシュ。サーバー(https)に置いたときだけ働きます。
    ファイルを更新したら、下の CACHE の数字を1つ増やしてください。 */
-var CACHE = "qlists-v3";
+var CACHE = "qlists-v4";
 var FILES = [
   "./",
   "./index.html",
