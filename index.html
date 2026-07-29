@@ -173,10 +173,12 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
   padding:14px 26px;border-radius:999px;font-size:.9em;
   z-index:90;transition:transform .25s ease;}
 #toast.show{transform:translateX(-50%) translateY(0);}
-/* 画面ロック防止の動画。display:none にすると iOS が再生を止めるので、
-   1px にして透明にしてある。none にしないこと */
-#nosleepVid{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;
-  pointer-events:none;z-index:-1;}
+/* 画面ロック防止の動画。
+   display:none / visibility:hidden にすると iOS が再生を止める。使わないこと。
+   opacity:0 も「描いていない」と見なされる恐れがあるので、その10で 0 をやめた。
+   中身が真っ黒の2×2pxなので、画面の左下隅にあっても目には見えない */
+#nosleepVid{position:fixed;left:0;bottom:0;width:2px;height:2px;opacity:.01;
+  pointer-events:none;z-index:0;}
 </style>
 </head>
 <body>
@@ -344,8 +346,12 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
 
 <!-- 画面ロック防止のための無音動画。iPadOS 15 には Wake Lock API が無いので、
      「動画の再生中は画面を消さない」というiOSの決まりを利用している。
-     真っ黒・無音・1秒のループで、目には見えない。消さないこと（引き継ぎ その9） -->
-<video id="nosleepVid" muted loop playsinline webkit-playsinline
+     真っ黒・無音・30秒。目にはまず見えない。消さないこと（引き継ぎ その9・その10）
+
+     ★ loop 属性を付けないこと（その10）★
+     Safariには「loop でループしている動画は画面タイムアウトを止めない」という癖がある。
+     その9で loop を付けたせいで効かなかった。終わったら ended で手動で頭出しし直す -->
+<video id="nosleepVid" muted autoplay playsinline webkit-playsinline
        preload="auto" disableRemotePlayback tabindex="-1" aria-hidden="true"></video>
 
 <!-- pdf.worker を先に読むことで、file:// でもワーカー無しで動く保険になる -->
@@ -1294,7 +1300,7 @@ document.addEventListener("keydown", function (ev) {
    どちらも効かない端末があるので、
    本番前の「設定 → 自動ロック → しない」は保険として残すこと。
    ═══════════════════════════════════════════ */
-var WAKE = { lock: null, video: false, told: false, timer: 0 };
+var WAKE = { lock: null, told: false, timer: 0, watch: 0 };
 
 /* --- 1. Wake Lock API --- */
 function wakeApiOn() {
@@ -1308,48 +1314,79 @@ function wakeApiOff() {
   try { if (WAKE.lock) { WAKE.lock.release(); WAKE.lock = null; } } catch (e) {}
 }
 
-/* --- 2. 無音動画のループ ---
-   動画の中身はこのファイルに文字で埋め込んである（約2KB）。
+/* --- 2. 無音動画の再生 ---
+   動画の中身はこのファイルに文字で埋め込んである（真っ黒30秒・約2.3KB）。
    別ファイルにしないのは、sw.js の FILES を増やさずに済ませるため。
    再生は指で触った流れの中でしか始められない（iOSの決まり）。
-   startPlay() は「▶ 演奏」を押したタップの中から呼ばれるので都合がいい */
-var NOSLEEP_MP4 = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAM3bW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAmF0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAACAAAAAgAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAHZbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAoAAAAKABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABhG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAURzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAACAAIABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAe/+EAFmdCwB7ZCWwEQAAAAwBAAAADAoPFi5IBAAVoy4PLIAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAABVgAAAVYAAAABhzdHRzAAAAAAAAAAEAAAAFAAAIAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAFAAAAAQAAAChzdHN6AAAAAAAAAAAAAAAFAAAChQAAAAoAAAAKAAAACgAAAAkAAAAUc3RjbwAAAAAAAAABAAADZwAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNTguNzYuMTAwAAAACGZyZWUAAAK0bWRhdAAAAnAGBf//bNxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjMgcjMwNjAgNWRiNmFhNiAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjEgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0wIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDE6MHgxMTEgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTUgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAANZYiEBHyYoAA2IyddeAAAAAZBmjgI+WAAAAAGQZpUAj5YAAAABkGaYBDywAAAAAVBmoA/yw==";
+   startPlay() は「▶ 演奏」を押したタップの中から呼ばれるので都合がいい。
+
+   ★★ loop 属性は使わないこと（その10・重要）★★
+   Safariには「loop でループしている動画は画面タイムアウトを止めない」という癖がある。
+   その9で loop を使ったせいで、再生はできているのに画面が消えた。
+   終わりまで来たら ended を捕まえて、自分で頭出しして再生し直す。 */
+var NOSLEEP_MP4 = "data:video/mp4;base64,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";
 
 function wakeVideoOn() {
   var v = $("nosleepVid");
   if (!v) return;
   try {
     if (!v.src) v.src = NOSLEEP_MP4;
-    v.muted = true; v.loop = true; v.playsInline = true;
+    v.muted = true; v.playsInline = true; v.loop = false;
     var pr = v.play();
-    if (pr && pr.then) pr.then(function () { WAKE.video = true; })
-                         .catch(function () { WAKE.video = false; });
-    else WAKE.video = true;
-  } catch (e) { WAKE.video = false; }
+    if (pr && pr.then) pr.catch(function () {});
+  } catch (e) {}
 }
 function wakeVideoOff() {
   var v = $("nosleepVid");
   if (!v) return;
   try { v.pause(); } catch (e) {}
-  WAKE.video = false;
 }
+/* 本当に再生が進んでいるか。命令が通っただけでは当てにならない */
+function wakeVideoAlive() {
+  var v = $("nosleepVid");
+  return !!v && !v.paused && !v.ended && v.readyState >= 2;
+}
+
+/* 終わりまで来たら自分で頭出しして続ける。loop の代わり */
+(function () {
+  var v = $("nosleepVid");
+  if (!v) return;
+  v.addEventListener("ended", function () {
+    try { v.currentTime = 0; var p = v.play(); if (p && p.then) p.catch(function () {}); } catch (e) {}
+  });
+})();
+
+/* --- 見張り ---
+   iOSは何かの拍子に再生を止める。20秒ごとに見て、止まっていたら入れ直す。
+   演奏画面にいる間だけ回す */
+function wakeWatchOn() {
+  clearInterval(WAKE.watch);
+  WAKE.watch = setInterval(function () {
+    if ($("screen-play").classList.contains("hidden")) return;
+    if (!wakeVideoAlive()) wakeVideoOn();
+  }, 20000);
+}
+function wakeWatchOff() { clearInterval(WAKE.watch); WAKE.watch = 0; }
 
 /* --- まとめて入切 --- */
 function requestWakeLock() {
   wakeApiOn();
   wakeVideoOn();
-  /* 効いたかどうかは少し待たないと分からない（どちらも非同期のため）。
-     知らせるのは演奏画面を最初に開いた1回だけ。毎回出ると邪魔になる */
+  wakeWatchOn();
+  /* 効いたかどうかは少し待たないと分からない（読み込みも再生も非同期のため）。
+     知らせるのは演奏画面を最初に開いた1回だけ。毎回出ると邪魔になる。
+     ★ 命令が通ったかではなく、実際に再生が進んでいるかで判定すること（その10）★ */
   clearTimeout(WAKE.timer);
   WAKE.timer = setTimeout(function () {
     if (WAKE.told) return;
     WAKE.told = true;
-    if (WAKE.lock || WAKE.video) toast("画面ロック防止：ON");
+    if (WAKE.lock || wakeVideoAlive()) toast("画面ロック防止：ON");
     else toast("画面ロックは防げません。設定→自動ロック→しない に");
-  }, 900);
+  }, 1500);
 }
 function releaseWakeLock() {
   clearTimeout(WAKE.timer);
+  wakeWatchOff();
   wakeApiOff();
   wakeVideoOff();
 }
@@ -1361,6 +1398,7 @@ document.addEventListener("visibilitychange", function () {
   if ($("screen-play").classList.contains("hidden")) return;
   wakeApiOn();
   wakeVideoOn();
+  wakeWatchOn();
 });
 
 /* ═══════════════════════════════════════════
