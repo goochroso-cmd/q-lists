@@ -173,6 +173,10 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
   padding:14px 26px;border-radius:999px;font-size:.9em;
   z-index:90;transition:transform .25s ease;}
 #toast.show{transform:translateX(-50%) translateY(0);}
+/* 画面ロック防止の動画。display:none にすると iOS が再生を止めるので、
+   1px にして透明にしてある。none にしないこと */
+#nosleepVid{position:fixed;left:0;bottom:0;width:1px;height:1px;opacity:0;
+  pointer-events:none;z-index:-1;}
 </style>
 </head>
 <body>
@@ -274,7 +278,8 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
     </ol>
     <div class="card" style="margin-top:20px;">
       <b>本番前の注意</b><br>
-      <span class="sub">iPadの「設定 → 画面表示と明るさ → 自動ロック」を<b>「しない」</b>にしてください。演奏中に画面が消えるのを防げます。</span>
+      <span class="sub">演奏画面を開くと、アプリが画面ロックを止めにいきます。うまくいくと下に<b>「画面ロック防止：ON」</b>と一度だけ出ます。<br>
+      出なかったとき、または確実にしたいときは、iPadの「設定 → 画面表示と明るさ → 自動ロック」を<b>「しない」</b>にしてください。<b>こちらが確実です。</b></span>
     </div>
     <div class="card" style="margin-top:14px;">
       <b>データの保険</b><br>
@@ -336,6 +341,12 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
 </section>
 
 <div id="toast"></div>
+
+<!-- 画面ロック防止のための無音動画。iPadOS 15 には Wake Lock API が無いので、
+     「動画の再生中は画面を消さない」というiOSの決まりを利用している。
+     真っ黒・無音・1秒のループで、目には見えない。消さないこと（引き継ぎ その9） -->
+<video id="nosleepVid" muted loop playsinline webkit-playsinline
+       preload="auto" disableRemotePlayback tabindex="-1" aria-hidden="true"></video>
 
 <!-- pdf.worker を先に読むことで、file:// でもワーカー無しで動く保険になる -->
 <script src="lib/pdf.worker.min.js"></script>
@@ -1271,20 +1282,85 @@ document.addEventListener("keydown", function (ev) {
   else if (ev.key === "f" || ev.key === "F") { P.folded = !P.folded; updHud(); }
 });
 
-/* --- 画面を消させない（対応端末のみ） --- */
-var wakeLock = null;
-function requestWakeLock() {
+/* ═══════════════════════════════════════════
+   画面を消させない（自動ロック防止）
+   ───────────────────────────────────────────
+   手が2つある。上から順に試す。
+
+   1. Wake Lock API … 正式な仕組み。ただし iPadOS 16.4 以降でしか使えない
+   2. 無音動画のループ … iOSは「動画を再生している間は画面を消さない」。
+      その決まりを借りる。iPad Air 2（iPadOS 15）で頼れるのはこちら
+
+   どちらも効かない端末があるので、
+   本番前の「設定 → 自動ロック → しない」は保険として残すこと。
+   ═══════════════════════════════════════════ */
+var WAKE = { lock: null, video: false, told: false, timer: 0 };
+
+/* --- 1. Wake Lock API --- */
+function wakeApiOn() {
   try {
     if (navigator.wakeLock && navigator.wakeLock.request) {
-      navigator.wakeLock.request("screen").then(function (w) { wakeLock = w; }).catch(function () {});
+      navigator.wakeLock.request("screen").then(function (w) { WAKE.lock = w; }).catch(function () {});
     }
   } catch (e) {}
 }
-function releaseWakeLock() {
-  try { if (wakeLock) { wakeLock.release(); wakeLock = null; } } catch (e) {}
+function wakeApiOff() {
+  try { if (WAKE.lock) { WAKE.lock.release(); WAKE.lock = null; } } catch (e) {}
 }
+
+/* --- 2. 無音動画のループ ---
+   動画の中身はこのファイルに文字で埋め込んである（約2KB）。
+   別ファイルにしないのは、sw.js の FILES を増やさずに済ませるため。
+   再生は指で触った流れの中でしか始められない（iOSの決まり）。
+   startPlay() は「▶ 演奏」を押したタップの中から呼ばれるので都合がいい */
+var NOSLEEP_MP4 = "data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAM3bW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAA+gAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAmF0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAA+gAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAACAAAAAgAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAPoAAAAAAABAAAAAAHZbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAAAoAAAAKABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABhG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAURzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAACAAIABIAAAASAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAe/+EAFmdCwB7ZCWwEQAAAAwBAAAADAoPFi5IBAAVoy4PLIAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAABVgAAAVYAAAABhzdHRzAAAAAAAAAAEAAAAFAAAIAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAAFAAAAAQAAAChzdHN6AAAAAAAAAAAAAAAFAAAChQAAAAoAAAAKAAAACgAAAAkAAAAUc3RjbwAAAAAAAAABAAADZwAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNTguNzYuMTAwAAAACGZyZWUAAAK0bWRhdAAAAnAGBf//bNxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjMgcjMwNjAgNWRiNmFhNiAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjEgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0wIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDE6MHgxMTEgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTUgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAANZYiEBHyYoAA2IyddeAAAAAZBmjgI+WAAAAAGQZpUAj5YAAAABkGaYBDywAAAAAVBmoA/yw==";
+
+function wakeVideoOn() {
+  var v = $("nosleepVid");
+  if (!v) return;
+  try {
+    if (!v.src) v.src = NOSLEEP_MP4;
+    v.muted = true; v.loop = true; v.playsInline = true;
+    var pr = v.play();
+    if (pr && pr.then) pr.then(function () { WAKE.video = true; })
+                         .catch(function () { WAKE.video = false; });
+    else WAKE.video = true;
+  } catch (e) { WAKE.video = false; }
+}
+function wakeVideoOff() {
+  var v = $("nosleepVid");
+  if (!v) return;
+  try { v.pause(); } catch (e) {}
+  WAKE.video = false;
+}
+
+/* --- まとめて入切 --- */
+function requestWakeLock() {
+  wakeApiOn();
+  wakeVideoOn();
+  /* 効いたかどうかは少し待たないと分からない（どちらも非同期のため）。
+     知らせるのは演奏画面を最初に開いた1回だけ。毎回出ると邪魔になる */
+  clearTimeout(WAKE.timer);
+  WAKE.timer = setTimeout(function () {
+    if (WAKE.told) return;
+    WAKE.told = true;
+    if (WAKE.lock || WAKE.video) toast("画面ロック防止：ON");
+    else toast("画面ロックは防げません。設定→自動ロック→しない に");
+  }, 900);
+}
+function releaseWakeLock() {
+  clearTimeout(WAKE.timer);
+  wakeApiOff();
+  wakeVideoOff();
+}
+
+/* 電話やホーム画面から戻ってきたとき、両方とも止まっているので入れ直す。
+   ただし演奏画面にいるときだけ */
 document.addEventListener("visibilitychange", function () {
-  if (document.visibilityState === "visible" && !$("screen-play").classList.contains("hidden")) requestWakeLock();
+  if (document.visibilityState !== "visible") return;
+  if ($("screen-play").classList.contains("hidden")) return;
+  wakeApiOn();
+  wakeVideoOn();
 });
 
 /* ═══════════════════════════════════════════
