@@ -79,6 +79,11 @@ h2{font-size:1.1em;margin:24px 0 12px;color:var(--sub);}
 input[type=text],input[type=number]{width:100%;padding:14px;border:3px solid var(--line);
   border-radius:12px;background:var(--field);color:var(--ink);}
 input:focus{outline:none;border-color:var(--accent);}
+/* メモの入力欄（2026-08-02 その17）。老眼でも打ちやすいよう大きめ・行間広め */
+textarea{width:100%;box-sizing:border-box;padding:14px;border:3px solid var(--line);
+  border-radius:12px;background:var(--field);color:var(--ink);
+  font-family:inherit;font-size:22px;line-height:1.8;resize:vertical;}
+textarea:focus{outline:none;border-color:var(--accent);}
 
 /* 時間入力（分'秒） */
 .timerow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -143,6 +148,14 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
 #pagesWrap.vert canvas{margin:0 0 6px 0;}
 #pagesWrap.horz canvas{margin:0 6px 0 0;flex:0 0 auto;}
 #pagesWrap.horzrev canvas{margin:0 0 0 6px;flex:0 0 auto;}
+/* メモ（アプリ内で作る、文字だけの「曲」）2026-08-02 その17
+   楽譜PDFの代わりに文字の箱を1つ置くだけ。スクロールの仕組みは楽譜と同じものを使う。
+   幅は loadSong の中で画面幅に合わせて入れる（canvas と同じ考え方）。 */
+#pagesWrap .memo{display:block;box-sizing:border-box;background:var(--bg);color:var(--ink);
+  padding:6vh 6vw 60vh;white-space:pre-wrap;overflow-wrap:break-word;
+  line-height:1.85;font-size:38px;font-weight:600;letter-spacing:.02em;}
+#pagesWrap .memo.f-s{font-size:30px;}
+#pagesWrap .memo.f-l{font-size:48px;}
 
 #progress{position:absolute;left:0;right:0;top:0;height:8px;background:rgba(128,128,128,.3);z-index:5;}
 #progressBar{height:100%;width:0;background:#5f9e6a;}
@@ -209,7 +222,11 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
     <button class="btn wide ghost" id="btnAddPdf" style="margin-top:16px;">＋ 楽譜PDFを追加</button>
     <input type="file" id="filePick" accept="application/pdf,.pdf" multiple class="hidden">
 
-    <div class="btnrow" style="margin-top:36px;">
+    <button class="btn wide ghost" id="btnAddMemo" style="margin-top:10px;">＋ メモを追加</button>
+
+    <button class="btn wide ghost" id="btnDupSet" style="margin-top:36px;">このセットリストを複製する</button>
+
+    <div class="btnrow" style="margin-top:14px;">
       <button class="btn del sm" id="btnDelSet">✕ このセットリストを削除</button>
     </div>
   </div>
@@ -218,10 +235,25 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
 <!-- ══════════ 曲の設定 ══════════ -->
 <div id="songDlg" class="overlay hidden">
   <div class="sheet compact">
-    <h3>曲の設定</h3>
+    <h3 id="sDlgTitle">曲の設定</h3>
 
-    <label for="sName">曲名</label>
-    <input type="text" id="sName">
+    <div id="rowName">
+      <label for="sName">曲名</label>
+      <input type="text" id="sName">
+    </div>
+
+    <!-- メモのときだけ出る欄（2026-08-02 その17）。名前は1行目から自動で取る -->
+    <div id="rowMemo" class="hidden">
+      <label for="sText">メモの中身　<span class="sub">（1行目が、一覧に出る名前になります）</span></label>
+      <textarea id="sText" rows="7" placeholder="例：&#10;3曲目のあと MC&#10;・新曲の告知&#10;・次はキー Am／テンポ速め&#10;・2番のあとギターソロ"></textarea>
+
+      <label>文字の大きさ</label>
+      <div class="seg" id="segFont">
+        <button type="button" data-v="s">小</button>
+        <button type="button" data-v="m">中</button>
+        <button type="button" data-v="l">大</button>
+      </div>
+    </div>
 
     <label>スクロールにかける時間</label>
     <div class="timerow">
@@ -237,17 +269,20 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
       <span class="sub" id="sTimeHint"></span>
     </div>
 
-    <label>スクロール方向　<span class="sub">（日本語の縦書きなど右から左に読む楽譜は「横 ← 左へ」）</span></label>
-    <div class="seg" id="segDir">
-      <button type="button" data-v="v">縦 ↓ 下へ</button>
-      <button type="button" data-v="h">横 → 右へ</button>
-      <button type="button" data-v="hl">横 ← 左へ</button>
-    </div>
+    <!-- ここから下は楽譜PDFの曲だけ。メモは縦スクロール固定・反転なし（その17） -->
+    <div id="rowPdfOnly">
+      <label>スクロール方向　<span class="sub">（日本語の縦書きなど右から左に読む楽譜は「横 ← 左へ」）</span></label>
+      <div class="seg" id="segDir">
+        <button type="button" data-v="v">縦 ↓ 下へ</button>
+        <button type="button" data-v="h">横 → 右へ</button>
+        <button type="button" data-v="hl">横 ← 左へ</button>
+      </div>
 
-    <label>色の表示　<span class="sub">（黒地に白の楽譜を白地で見たいとき →「白黒を反転」）</span></label>
-    <div class="seg" id="segInv">
-      <button type="button" data-v="0">そのまま</button>
-      <button type="button" data-v="1">白黒を反転</button>
+      <label>色の表示　<span class="sub">（黒地に白の楽譜を白地で見たいとき →「白黒を反転」）</span></label>
+      <div class="seg" id="segInv">
+        <button type="button" data-v="0">そのまま</button>
+        <button type="button" data-v="1">白黒を反転</button>
+      </div>
     </div>
 
     <div class="btnrow" style="margin-top:18px;">
@@ -265,11 +300,14 @@ label{display:block;font-weight:700;margin:18px 0 8px;font-size:.95em;}
     <ol style="padding-left:1.2em;line-height:2;">
       <li>「新しいセットリスト」を作る</li>
       <li>「楽譜PDFを追加」で曲を並べる</li>
+      <li><b>「＋ メモを追加」</b>で、MCの段取り・曲間の合図・キーやテンポの覚書を、アプリの中だけで作れる。<b>1曲として並び、あとから何度でも書き直せます</b>（1行目が一覧に出る名前になります）</li>
+      <li>似たセットリストは<b>「このセットリストを複製する」</b>で丸ごとコピーできる（楽譜も一緒にコピーされます）</li>
       <li>曲をタップして、スクロール時間・方向・色を決める</li>
       <li>「▶ 最初から演奏」</li>
       <li>演奏画面を<b>ダブルタップ</b>（素早く2回叩く）すると自動スクロール開始</li>
       <li>スクロール中も<b>ダブルタップ</b>で一時停止。1回だけ触れても動きません</li>
-      <li>1曲終わると次の曲が読み込まれ、待機状態になる</li>
+      <li><b>スクロール中でも楽譜を指でつかんで動かせます。</b>指を離すと、その位置から自動スクロールが続きます（演奏とズレたときの直し用）</li>
+      <li>1曲終わると<b>その曲の最後のページで止まったまま</b>になる。次の曲へは下のバーの<b>「次の曲 ▶」</b>を押す（自動では変わりません）</li>
       <li>楽譜をもっと広く見たいときは「▽ 畳む」で操作バーを消せる（右下の「△」で戻る）</li>
     </ol>
     <div class="card" style="margin-top:20px;">
@@ -450,6 +488,18 @@ function mmss(sec) {
 /* スクロール方向の判定。dir は "v"（縦）/ "h"（横・右へ）/ "hl"（横・左へ＝縦書き用） */
 function isHorz(song) { return song && (song.dir === "h" || song.dir === "hl"); }
 function isRev(song)  { return song && song.dir === "hl"; }
+/* メモかどうか（2026-08-02 その17）
+   ★ song.kind を直接比べないこと。この関数を通すこと ★
+   昔からある曲には kind が無い。無ければ楽譜PDFの曲、という約束にしてあるので、
+   前に作ったセットリストはそのまま今までどおり動く。 */
+function isMemo(song) { return !!(song && song.kind === "memo"); }
+/* メモの1行目を名前として使う（2026-08-02 その17）
+   タイトル欄は作らない、という親分の指示。空なら「メモ」とだけ出す。 */
+function memoName(text) {
+  var line = String(text || "").split("\n")[0].trim();
+  if (!line) return "メモ";
+  return line.length > 30 ? line.slice(0, 30) + "…" : line;
+}
 function dirLabel(dir, sh) {
   if (dir === "h")  return sh ? "横 →" : "横スクロール →";
   if (dir === "hl") return sh ? "横 ←" : "横スクロール ←";
@@ -543,7 +593,7 @@ function renderSongs() {
   if (sl.songs.length === 0) {
     var e = document.createElement("div");
     e.className = "empty";
-    e.innerHTML = "まだ曲がありません。<br>下の「＋ 楽譜PDFを追加」から<br>PDFを選んでください。";
+    e.innerHTML = "まだ曲がありません。<br>下の「＋ 楽譜PDFを追加」からPDFを選ぶか、<br>「＋ メモを追加」で覚書を作ってください。";
     box.appendChild(e);
     return;
   }
@@ -557,9 +607,12 @@ function renderSongs() {
     var nm = document.createElement("div"); nm.className = "songname";
     nm.appendChild(document.createTextNode(song.name));
     var meta = document.createElement("div"); meta.className = "songmeta";
-    meta.textContent = mmss(song.seconds) + "　/　"
-      + dirLabel(song.dir, false)
-      + (song.invert ? "　/　反転" : "");
+    /* メモは方向も反転も持たないので、代わりに「メモ」と出して楽譜と見分けられるようにする（その17） */
+    meta.textContent = isMemo(song)
+      ? "メモ　/　" + mmss(song.seconds)
+      : mmss(song.seconds) + "　/　"
+        + dirLabel(song.dir, false)
+        + (song.invert ? "　/　反転" : "");
     nm.appendChild(meta);
 
     var btns = document.createElement("div"); btns.className = "songbtns";
@@ -600,14 +653,106 @@ $("setNameInput").oninput = function () {
 $("btnDelSet").onclick = function () {
   var sl = curSet(); if (!sl) return;
   if (!confirm("「" + sl.name + "」を削除しますか？\n（PDFのファイル自体は消えません）")) return;
-  sl.songs.forEach(function (s) { idbDel(s.pdfId); });
+  /* ★ if (s.pdfId) を外さないこと（その17）★
+     メモには pdfId が無い。囲まないと idbDel(undefined) を呼ぶことになる。
+     テストBの[21]が見張っている。 */
+  sl.songs.forEach(function (s) { if (s.pdfId) idbDel(s.pdfId); });
   setlists = setlists.filter(function (x) { return x.id !== sl.id; });
   saveState(); renderHome(); show("screen-home");
   toast("削除しました");
 };
+/* --- セットリストの複製（2026-08-01 その15） ---
+   ★★ 楽譜PDFの中身も複製する。pdfId を使い回してはいけない ★★
+   セットリストや曲を削除すると idbDel(s.pdfId) で PDF 本体が消える作りなので、
+   2つのセットリストで同じ pdfId を共有していると、片方を消した瞬間に
+   もう片方が白紙になる。バックアップの読み込み（applyImport）が同じ理由で
+   同じことをしている。楽譜PDFは1曲50KB程度なので容量は問題にならない。 */
+var dupBusy = false;
+function duplicateSetlist(id) {
+  var src = null;
+  for (var i = 0; i < setlists.length; i++) if (setlists[i].id === id) src = setlists[i];
+  if (!src) return Promise.resolve(null);
+
+  var nsl = { id: uid(), name: (src.name || "セットリスト") + " のコピー", songs: [] };
+  var chain = Promise.resolve();
+  (src.songs || []).forEach(function (s) {
+    chain = chain.then(function () {
+      /* メモは楽譜PDFを持たないので、そのまま写すだけでよい（その17）。
+         本文がセットリストと同じ場所にあるおかげで、ここは何も難しくない。 */
+      if (isMemo(s)) {
+        nsl.songs.push({
+          id: uid(), kind: "memo", text: s.text || "",
+          name: s.name, seconds: s.seconds, dir: "v",
+          invert: false, font: s.font || "m"
+        });
+        return;
+      }
+      var newPdfId = uid();
+      return idbGet(s.pdfId).then(function (rec) {
+        var put = (rec && rec.data)
+          ? idbPut({ id: newPdfId, name: rec.name || s.name || "", data: rec.data })
+          : Promise.resolve();
+        return put.then(function () {
+          nsl.songs.push({
+            id: uid(),
+            pdfId: newPdfId,
+            name: s.name,
+            seconds: s.seconds,
+            dir: s.dir,
+            invert: !!s.invert
+          });
+        });
+      });
+    });
+  });
+
+  return chain.then(function () {
+    var at = setlists.indexOf(src);
+    setlists.splice(at < 0 ? setlists.length : at + 1, 0, nsl);   // 元のすぐ下に置く
+    saveState();
+    return nsl;
+  });
+}
+
+$("btnDupSet").onclick = function () {
+  var sl = curSet(); if (!sl || dupBusy) return;
+  dupBusy = true;
+  this.disabled = true;
+  var btn = this;
+  duplicateSetlist(sl.id).then(function (nsl) {
+    dupBusy = false; btn.disabled = false;
+    if (!nsl) return;
+    renderHome(); show("screen-home"); window.scrollTo(0, 0);
+    toast("「" + nsl.name + "」を作りました");
+  }, function () {
+    dupBusy = false; btn.disabled = false;
+    toast("複製できませんでした");
+  });
+};
+
 $("btnPlayAll").onclick = function () { startPlay(editId, 0, "edit"); };
 
 $("btnAddPdf").onclick = function () { $("filePick").click(); };
+
+/* メモを1つ追加する（2026-08-02 その17・親分の指示）
+   MCの段取り・曲間の合図・キーやテンポの覚書などを、アプリの中だけで作れるようにした。
+   楽譜PDFを持たない「曲」として、ほかの曲と同じ列に並ぶ。
+   追加したらすぐ本文を書けるよう、設定ダイアログをそのまま開く。 */
+$("btnAddMemo").onclick = function () {
+  var sl = curSet(); if (!sl) return;
+  sl.songs.push({
+    id: uid(),
+    kind: "memo",
+    text: "",
+    name: "メモ",
+    seconds: 60,
+    dir: "v",        /* メモは縦スクロール固定。横に流す意味がないので選ばせない */
+    invert: false,
+    font: "m"
+  });
+  saveState(); renderSongs();
+  openSongDlg(sl.songs.length - 1);
+};
 $("filePick").onchange = function () {
   var files = Array.prototype.slice.call(this.files || []);
   var self = this;
@@ -647,7 +792,21 @@ var dlgIdx = -1;
 function openSongDlg(idx) {
   dlgIdx = idx;
   var s = curSet().songs[idx];
+  var memo = isMemo(s);
+
+  /* 同じダイアログを、メモと楽譜で入口だけ振り分けて使う（その17）。
+     新しい画面は作っていない。出し入れするのは3つの箱だけ。 */
+  $("sDlgTitle").textContent = memo ? "メモ" : "曲の設定";
+  $("rowName").classList.toggle("hidden", memo);   /* メモに曲名欄は無い。1行目を名前にする */
+  $("rowMemo").classList.toggle("hidden", !memo);
+  $("rowPdfOnly").classList.toggle("hidden", memo); /* メモは縦固定・反転なし */
+  $("sDelete").textContent = memo
+    ? "✕ このメモをセットリストから外す"
+    : "✕ この曲をセットリストから外す";
+
   $("sName").value = s.name;
+  $("sText").value = memo ? (s.text || "") : "";
+  segSet("segFont", s.font || "m");
   dlgSetSec(s.seconds);
   segSet("segDir", s.dir);
   segSet("segInv", s.invert ? "1" : "0");
@@ -663,7 +822,7 @@ function segGet(id) {
   for (var i = 0; i < bs.length; i++) if (bs[i].getAttribute("aria-pressed") === "true") return bs[i].dataset.v;
   return bs[0].dataset.v;
 }
-["segDir", "segInv"].forEach(function (id) {
+["segDir", "segInv", "segFont"].forEach(function (id) {
   $(id).addEventListener("click", function (ev) {
     var b = ev.target.closest("button"); if (!b) return;
     segSet(id, b.dataset.v);
@@ -704,10 +863,20 @@ document.querySelectorAll("[data-sec]").forEach(function (b) {
 $("sCancel").onclick = function () { $("songDlg").classList.add("hidden"); };
 $("sSave").onclick = function () {
   var s = curSet().songs[dlgIdx];
-  s.name = ($("sName").value || "").trim() || s.name;
   s.seconds = dlgGetSec();
-  s.dir = segGet("segDir");
-  s.invert = segGet("segInv") === "1";
+  if (isMemo(s)) {
+    /* メモ：名前は1行目から自動で作る。曲名欄も方向も反転も触らない（その17）。
+       ここが「後編集」の実体 ── 何度開いて書き直しても同じ道を通る。 */
+    s.text = $("sText").value || "";
+    s.name = memoName(s.text);
+    s.font = segGet("segFont");
+    s.dir = "v";
+    s.invert = false;
+  } else {
+    s.name = ($("sName").value || "").trim() || s.name;
+    s.dir = segGet("segDir");
+    s.invert = segGet("segInv") === "1";
+  }
   saveState(); renderSongs();
   $("songDlg").classList.add("hidden");
   toast("保存しました");
@@ -715,7 +884,7 @@ $("sSave").onclick = function () {
 $("sDelete").onclick = function () {
   var sl = curSet(); var s = sl.songs[dlgIdx];
   if (!confirm("「" + s.name + "」をセットリストから外しますか？")) return;
-  idbDel(s.pdfId);
+  if (s.pdfId) idbDel(s.pdfId);   /* ★ メモには pdfId が無い（その17）★ */
   sl.songs.splice(dlgIdx, 1);
   saveState(); renderSongs();
   $("songDlg").classList.add("hidden");
@@ -881,19 +1050,33 @@ function applyImport(replace) {
       newSets.push(nsl);
       ((sl && sl.songs) || []).forEach(function (s) {
         chain = chain.then(function () {
+          var sec = parseInt(s.seconds, 10);
+          if (isNaN(sec)) sec = 180;
+          sec = Math.min(3600, Math.max(1, sec));
+
+          /* メモは本文がこのJSONの中に丸ごと入っている（その17）。
+             PDFを取り出す必要がないので、そのまま入れ直すだけ。 */
+          if (s && s.kind === "memo") {
+            nsl.songs.push({
+              id: uid(), kind: "memo", text: String(s.text || ""),
+              name: s.name || memoName(s.text), seconds: sec,
+              dir: "v", invert: false,
+              font: (s.font === "s" || s.font === "l") ? s.font : "m"
+            });
+            return;
+          }
+
           var p = pdfMap[s.pdfId];
           var newPdfId = uid();
           var put = (p && p.b64)
             ? idbPut({ id: newPdfId, name: p.name || s.name || "", data: b64ToBuf(p.b64) })
             : Promise.resolve();
           return put.then(function () {
-            var sec = parseInt(s.seconds, 10);
-            if (isNaN(sec)) sec = 180;
             nsl.songs.push({
               id: uid(),
               pdfId: newPdfId,
               name: s.name || "曲",
-              seconds: Math.min(3600, Math.max(1, sec)),
+              seconds: sec,
               dir: (s.dir === "h" || s.dir === "hl") ? s.dir : "v",
               invert: !!s.invert
             });
@@ -923,7 +1106,8 @@ var P = {
   setId: null, idx: 0, songs: [], from: "home",
   dist: 0, totalMs: 0, elapsedMs: 0, baseMs: 0, startTs: 0,
   playing: false, raf: 0, renderToken: 0, ready: false,
-  finished: false, loadSec: "", folded: false
+  finished: false, loadSec: "", folded: false,
+  pdf: null            /* いま開いている楽譜PDF。曲を替えるとき閉じる（その17・メモリ対策） */
 };
 
 function startPlay(setId, idx, from) {
@@ -941,7 +1125,9 @@ function exitPlay() {
   stopScroll();
   P.renderToken++;
   releaseWakeLock();
-  $("pagesWrap").innerHTML = "";
+  /* 一覧に戻っても絵を握ったままだと、次に演奏を始めたとき二重に積み上がる（その17） */
+  releasePages();
+  releasePdf();
   if (P.from === "edit" && curSet()) { renderSongs(); show("screen-edit"); }
   else { renderHome(); show("screen-home"); }
   window.scrollTo(0, 0);
@@ -950,6 +1136,43 @@ function exitPlay() {
 function stopScroll() {
   P.playing = false;
   if (P.raf) { cancelAnimationFrame(P.raf); P.raf = 0; }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   楽譜の絵とPDFの後始末（2026-08-02 その17）
+
+   ★★ この2つの関数を消さないこと。消すと本番でアプリが固まる ★★
+
+   親分の iPad Air 2 で「演奏を止めたあと、操作バーは見えているのに
+   ボタンを押しても何も起きない。アプリを開き直すしかない」という
+   フリーズが何度か起きた。原因はメモリ切れだった。
+
+   iOS の Safari は、canvas（絵を描く板）を DOM から外しただけでは
+   中の画素データを返してくれない。大きさを 0 にして初めて解放される。
+   1ページの絵は 2048×2898 ＝ 約24MB。6曲8ページを1周すると 190MB。
+   画面を回すたびにさらに積み上がる。iPad Air 2 はこれで詰まる。
+
+   releasePages() を通せば、抱えるのは「いま出している1曲ぶん」だけになる。
+   テストBの[22]が見張っている。
+   ═══════════════════════════════════════════════════════════════ */
+function releasePages() {
+  var wrap = $("pagesWrap");
+  if (!wrap) return;
+  var cs = wrap.querySelectorAll("canvas");
+  for (var i = 0; i < cs.length; i++) releaseCanvas(cs[i]);
+  wrap.innerHTML = "";
+}
+function releaseCanvas(cv) {
+  if (!cv) return;
+  /* ★ width / height に 0 を入れるのが肝。これがメモリを返す唯一の合図 ★ */
+  try { cv.width = 0; cv.height = 0; } catch (e) {}
+}
+/* いま開いているPDFを閉じる。pdf.js が内部に抱えている作業用のデータも返る */
+function releasePdf() {
+  if (P.pdf) {
+    try { P.pdf.destroy(); } catch (e) {}
+    P.pdf = null;
+  }
 }
 
 /* --- 楽譜の描画 --- */
@@ -966,7 +1189,10 @@ function loadSong(idx) {
   var wrap = $("pagesWrap");
   var stage = $("stage");
 
-  wrap.innerHTML = "";
+  /* ★ innerHTML = "" だけに戻さないこと（その17）★
+     それだけでは iOS が絵のメモリを返さず、曲を替えるたびに積み上がって固まる */
+  releasePages();
+  releasePdf();
   wrap.style.transform = "translate3d(0,0,0)";
   wrap.className = (isRev(song) ? "horzrev" : isHorz(song) ? "horz" : "vert") + (song.invert ? " inv" : "");
   stage.classList.toggle("dark", !!song.invert);
@@ -975,6 +1201,31 @@ function loadSong(idx) {
   P.finished = false;
   setLoading("「" + song.name + "」を読み込み中…");
   updHud();
+
+  /* ── メモ（2026-08-02 その17）──────────────────────────────
+     ★ この分岐を消さないこと。テストBの[21]が見張っている ★
+     メモは楽譜PDFを持たないので、この下のPDFの経路をひとつも通らない。
+     文字の箱を1つ置くだけで、あとは楽譜とまったく同じ仕組みで流れる
+     （P.dist を measure() が測り、applyScroll() が transform で動かす）。
+     pdf.js も IndexedDB も使わないので、読み込みは一瞬で終わる。 */
+  if (isMemo(song)) {
+    var el = document.createElement("div");
+    el.className = "memo" + (song.font === "s" ? " f-s" : song.font === "l" ? " f-l" : "");
+    el.style.width = stage.clientWidth + "px";
+    el.textContent = song.text || "";
+    wrap.className = "vert";            /* メモは縦固定。反転もしない */
+    wrap.appendChild(el);
+    /* autoBackground() は1枚目のcanvasの角の色を読む関数。
+       メモにcanvasは無いので呼ばない。地の色はアプリの墨茶に合わせる。 */
+    stage.style.background = getComputedStyle(document.documentElement)
+      .getPropertyValue("--bg").trim() || "#1F1C18";
+    measure();
+    P.ready = true;
+    clearLoading();
+    P.loadSec = "0.0";
+    updHud();
+    return;
+  }
 
   if (!pdfjsLib) { setLoading("pdf.js が読み込めませんでした。lib フォルダを確認してください。"); return; }
 
@@ -993,7 +1244,11 @@ function loadSong(idx) {
       cMapPacked: true
     }).promise;
   }).then(function (pdf) {
-    if (!pdf || token !== P.renderToken) return;
+    if (!pdf) return;
+    /* 曲を素早く切り替えると、古いほうの読み込みがここへ遅れて着く。
+       そのまま捨てるとPDFが宙に浮いてメモリに残るので、閉じてから抜ける（その17） */
+    if (token !== P.renderToken) { try { pdf.destroy(); } catch (e) {} return; }
+    P.pdf = pdf;                       /* 次に曲を替えるとき releasePdf() で閉じる */
 
     var vw = stage.clientWidth, vh = stage.clientHeight;
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1054,7 +1309,10 @@ function renderPages(pdf, dpr, horz, vw, vh, token, song) {
             var ctx = cv.getContext("2d", { alpha: false });
             ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
             return page.render({ canvasContext: ctx, viewport: vp }).promise.then(function () {
-              if (token !== P.renderToken) return;
+              /* 描き終わった直後に「もう古い」と分かった絵は、画面に出さずに捨てる。
+                 ★ そのとき 0×0 にしないと、宙に浮いたままメモリに残る（その17）★
+                 「次の曲 ▶」を続けて押したときに効く。 */
+              if (token !== P.renderToken) { releaseCanvas(cv); return; }
               $("pagesWrap").appendChild(cv);
             });
           });
@@ -1138,12 +1396,12 @@ function tick() {
   P.raf = requestAnimationFrame(tick);
 }
 function songFinished() {
-  if (P.idx < P.songs.length - 1) {
-    loadSong(P.idx + 1);   // 次の曲を読み込んで待機状態へ
-  } else {
-    P.finished = true;
-    updHud();
-  }
+  /* 2026-08-01 親分の指示：曲が終わっても次の曲へは進まない。
+     その曲の最後のページを出したまま停止して待つ。
+     次の曲へ移るのは「次の曲 ▶」を押したときだけ（手動）。
+     ★自動切替に戻さないこと★ テストBの[7]が見張っている */
+  P.finished = true;
+  updHud();
 }
 function goTo(idx) {
   if (idx < 0 || idx >= P.songs.length) return;
@@ -1184,25 +1442,100 @@ $("hudTab").onclick  = function (e) { e.stopPropagation(); P.folded = false; upd
 /* --- タップ / ドラッグ --- */
 (function () {
   var stage = $("stage");
-  var down = null, moved = false, startBase = 0;
+  var down = null, origin = null, moved = false, grabbed = false, activeId = null;
   /* ダブルタップ判定（2026-07-27 その8）。1回タップでは何も起きない。
      ステージ上で指が触れただけで再生が始まる事故を防ぐため。DBL_MS / DBL_PX は下の2つ */
   var DBL_MS = 400, DBL_PX = 45;
+  /* MOVE_PX … これを超えたら「タップ」ではなく「なぞった」と見なす（停止中の位置合わせ用）
+     GRAB_PX … 演奏中に「楽譜を掴んだ」と見なす指の移動量（2026-08-01 その14）
+                停止中より鈍くしてある。本番中に手が当たっただけで楽譜がズレると困るため。
+                反応が鈍いと言われたら下げる。誤爆すると言われたら上げる */
+  var MOVE_PX = 12, GRAB_PX = 30;
   var lastTapAt = 0, lastTapX = 0, lastTapY = 0;
 
+  /* ═══════════════════════════════════════════════════════════════
+     ★★ 指ごとに記憶を持つ（2026-08-02 その17）★★
+
+     昔は「指1本ぶんの記憶」しか持っていなかった。そのため、譜面台に
+     手のひらが触れたまま別の指で叩くと、手のひらが3mm動いただけで
+     「指が数百px動いた」と誤解し、叩いたことが無かったことにされた。
+     演奏中は操作バーも消えているので、打つ手が何も無くなる（実際に本番で踏んだ）。
+
+     その16では「2本目の指を丸ごと無視する」で直したが、それだと
+     ・手のひらが触れている間は、指で叩いても効かない（症状は同じ）
+     ・指を離した合図をiOSが取りこぼすと、二度と反応しなくなる（開き直すしかない）
+     という、もっと悪い形になっていた。
+
+     いまは pts に指ごとの記憶を持ち、
+     ・ドラッグ（位置合わせ・掴み）は「主の指」だけが行う  ← その16の良いところは残す
+     ・タップ判定は指ごとに独立して行う                    ← 手のひらに邪魔されない
+     という分け方にしてある。
+
+     ★ この分け方を「1本だけ見る」に戻さないこと ★ テストBの[23]が見張っている
+     ═══════════════════════════════════════════════════════════════ */
+  var pts = {};                 /* いま触れている指ごとの記憶 { x, y, moved, at } */
+  var STALE_MS = 15000;         /* 主の指がこれだけ音沙汰なしなら、新しい指に譲る */
+
+  function ptCount() { var n = 0; for (var k in pts) if (pts.hasOwnProperty(k)) n++; return n; }
+  function resetAll() {
+    down = null; origin = null; moved = false; grabbed = false; activeId = null;
+  }
+
   stage.addEventListener("pointerdown", function (ev) {
-    down = { x: ev.clientX, y: ev.clientY };
+    var id = ev.pointerId;
+    var now = Date.now();
+    pts[id] = { x: ev.clientX, y: ev.clientY, moved: false, at: now };
+
+    /* 主の指を決める。
+       ★ この乗り換えを消さないこと ★
+       消すと、指を離した合図を取りこぼしたときに主が居座り続け、
+       そのあと何をしても反応しなくなる（開き直すしかなくなる）。 */
+    var cur = (activeId !== null) ? pts[activeId] : null;
+    var takeOver = (activeId === null)          /* 誰も主でない */
+                || (activeId === id)            /* 自分が主 */
+                || !cur                         /* 主はもう画面から離れている */
+                || (now - cur.at > STALE_MS);   /* 主が長いこと音沙汰なし＝取りこぼした */
+    if (!takeOver) return;                      /* 主は替えない。ただしタップの記憶は上で取ってある */
+
+    activeId = id;
+    down   = { x: ev.clientX, y: ev.clientY };   // 前回の位置（差分をとる基準）
+    origin = { x: ev.clientX, y: ev.clientY };   // 指を置いた位置（総移動量をとる基準）
     moved = false;
-    startBase = P.baseMs;
-    try { if (!P.playing && stage.setPointerCapture) stage.setPointerCapture(ev.pointerId); } catch (e) {}
+    grabbed = false;
+    /* その14：演奏中も掴めるようにしたので、再生中もキャプチャする。
+       これが無いと指が画面の外に出た瞬間にドラッグが切れる */
+    try { if (stage.setPointerCapture) stage.setPointerCapture(id); } catch (e) {}
   });
 
   stage.addEventListener("pointermove", function (ev) {
-    if (!down) return;
-    var dx = ev.clientX - down.x, dy = ev.clientY - down.y;
-    if (Math.abs(dx) > 12 || Math.abs(dy) > 12) moved = true;
-    if (P.playing || !P.ready || P.dist <= 0) return;
-    // 停止中は指で楽譜の位置を微調整できる
+    /* まず、その指自身の移動量を、その指の記憶に付ける（他の指とは混ぜない） */
+    var rec = pts[ev.pointerId];
+    if (rec) {
+      rec.at = Date.now();
+      if (Math.abs(ev.clientX - rec.x) > MOVE_PX || Math.abs(ev.clientY - rec.y) > MOVE_PX) rec.moved = true;
+    }
+    if (!down || !origin) return;
+    if (activeId !== null && ev.pointerId !== activeId) return;   // ドラッグするのは主の指だけ
+    var dx = ev.clientX - down.x,   dy = ev.clientY - down.y;      // 前回からの差
+    var tx = ev.clientX - origin.x, ty = ev.clientY - origin.y;    // 指を置いた場所からの総量
+    if (Math.abs(tx) > MOVE_PX || Math.abs(ty) > MOVE_PX) moved = true;
+
+    /* 演奏中：GRAB_PX を超えて動かしたら「楽譜を掴んだ」ことにして、その場で時計を止める。
+       掴んだあとは P.playing が false になるので、下の位置合わせコードがそのまま効く。
+       指を離すと up() が play() を呼び、離した位置から自動スクロールが続く（その14） */
+    if (P.playing) {
+      if (!P.ready || P.dist <= 0) return;
+      if (Math.abs(tx) <= GRAB_PX && Math.abs(ty) <= GRAB_PX) return;   // まだ掴んでいない
+      grabbed = true;
+      stopScroll();                              // 時計を止める（P.playing = false）
+      P.baseMs = P.elapsedMs;                    // いまの位置で凍結
+      down = { x: ev.clientX, y: ev.clientY };   // 掴んだ瞬間を基準にし直す（飛ばないように）
+      /* updHud() はあえて呼ばない。掴んでいる最中に操作バーが出てくると邪魔なため */
+      return;
+    }
+
+    if (!P.ready || P.dist <= 0) return;
+    // 停止中（掴んでいる間も含む）は指で楽譜の位置を動かせる
     var song = P.songs[P.idx];
     /* 左へ流すときは指の向きが逆になる */
     var delta = isRev(song) ? dx : isHorz(song) ? -dx : -dy;
@@ -1214,26 +1547,67 @@ $("hudTab").onclick  = function (e) { e.stopPropagation(); P.folded = false; upd
     down = { x: ev.clientX, y: ev.clientY };
   });
 
-  function up() {
-    if (!down) return;
-    var wasMoved = moved;
-    var x = down.x, y = down.y;
-    down = null; moved = false;
-    if (wasMoved) { lastTapAt = 0; updHud(); return; }
-
-    /* 単純タップ。2回続けて素早く同じあたりを叩いたときだけ再生／一時停止する */
+  /* 1本の指が「動かさずに離れた」＝タップ。素早く2回で再生／一時停止。
+     ★ 主の指かどうかは見ない ★ 手のひらが触れていても、叩いた指自身が
+     動いていなければタップとして数える。ここが今回の直しの肝。 */
+  function tapUp(rec) {
+    if (!rec || rec.moved) { lastTapAt = 0; return; }
     var now = Date.now();
     if (now - lastTapAt <= DBL_MS &&
-        Math.abs(x - lastTapX) <= DBL_PX && Math.abs(y - lastTapY) <= DBL_PX) {
+        Math.abs(rec.x - lastTapX) <= DBL_PX && Math.abs(rec.y - lastTapY) <= DBL_PX) {
       lastTapAt = 0;                 // 3回目が続けて反応しないように消す
       if (P.playing) pause();
       else if (P.ready) play();
       return;
     }
-    lastTapAt = now; lastTapX = x; lastTapY = y;   // 1回目。何もしない
+    lastTapAt = now; lastTapX = rec.x; lastTapY = rec.y;   // 1回目。何もしない
   }
-  stage.addEventListener("pointerup", up);
-  stage.addEventListener("pointercancel", function () { down = null; moved = false; lastTapAt = 0; });
+
+  /* 主の指が離れたとき。掴み・ドラッグの後始末をしてから、タップかどうかを見る */
+  function endActive(rec) {
+    var wasGrabbed = grabbed;
+    var wasMoved = moved || !!(rec && rec.moved);
+    resetAll();
+
+    /* その14：演奏中に掴んで動かした場合は、指を離した位置から再生を続ける。
+       ★ ここを消すと、掴んだあと止まったままになる ★ */
+    if (wasGrabbed) {
+      lastTapAt = 0;
+      if (P.baseMs >= P.totalMs) {   // 終端まで送って離した。頭に戻さず、そこで終わりにする
+        P.baseMs = P.totalMs; P.elapsedMs = P.totalMs;
+        applyScroll(1);
+        songFinished();
+        return;
+      }
+      play();
+      return;
+    }
+    if (wasMoved) { lastTapAt = 0; updHud(); return; }
+    tapUp(rec);
+  }
+
+  stage.addEventListener("pointerup", function (ev) {
+    var id = ev.pointerId;
+    var rec = pts[id];
+    delete pts[id];
+    if (id === activeId) endActive(rec);
+    else tapUp(rec);               /* ★ 主でない指の叩きも、ちゃんと数える（その17）★ */
+    /* 指が全部離れたら、記憶をまっさらに戻す。取りこぼしがあってもここで必ず立ち直る */
+    if (ptCount() === 0) resetAll();
+  });
+
+  stage.addEventListener("pointercancel", function (ev) {
+    var id = ev && ev.pointerId !== undefined ? ev.pointerId : activeId;
+    delete pts[id];
+    if (id === activeId || activeId === null) {
+      var wasGrabbed = grabbed;
+      resetAll();
+      lastTapAt = 0;
+      /* 掴んだまま中断されたら、止まったままにして操作バーを出す（何が起きたか見えるように） */
+      if (wasGrabbed) updHud();
+    }
+    if (ptCount() === 0) resetAll();
+  });
 })();
 
 /* --- 画面の回転・サイズ変更 --- */
